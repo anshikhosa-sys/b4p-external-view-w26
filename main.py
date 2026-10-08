@@ -109,7 +109,15 @@ def get_inventory_records() -> list[dict]:
         raise HTTPException(status_code=500, detail="Missing GOOGLE_SHEET_ID.")
 
     client = _gspread_client()
-    sheet = client.open_by_key(sheet_id).sheet1
+    spreadsheet = client.open_by_key(sheet_id)
+    title = os.environ.get("INVENTORY_WORKSHEET_TITLE", "").strip()
+    if title:
+        try:
+            sheet = spreadsheet.worksheet(title)
+        except gspread.WorksheetNotFound:
+            raise HTTPException(status_code=500, detail=f"Inventory tab '{title}' not found.")
+    else:
+        sheet = spreadsheet.sheet1
     all_values = sheet.get_all_values()
     if not all_values:
         return []
