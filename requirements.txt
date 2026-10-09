@@ -5,3 +5,4 @@ google-auth==2.35.0
 pandas==2.2.3
 python-dotenv==1.0.1
 pydantic==2.9.2
+psycopg[binary]>=3.2,<4

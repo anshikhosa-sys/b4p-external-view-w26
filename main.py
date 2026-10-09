@@ -14,6 +14,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2.service_account import Credentials
 from pydantic import BaseModel, Field, field_validator
 
+import psycopg
+from fastapi.responses import JSONResponse
+
+from app import db
 from app.services import email as email_svc
 
 load_dotenv()
@@ -94,7 +98,15 @@ def _clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+@app.exception_handler(psycopg.Error)
+async def _db_error(_, exc: psycopg.Error):
+    return JSONResponse(status_code=503, content={"detail": "Database unavailable."})
+
+
 def get_inventory_records() -> list[dict]:
+    if db.enabled():
+        return db.get_supplies()
+
     if _use_sample_data():
         raw = json.loads(SAMPLE_PATH.read_text(encoding="utf-8"))
         out = []
@@ -217,8 +229,10 @@ def _snapshot_row(inventory: list[dict], sheet_row: int) -> Optional[dict]:
 
 
 @app.get("/health")
-async def health():
-    return {"ok": True}
+def health():
+    if db.enabled():
+        return {"source": "postgres", "ok": db.ping()}
+    return {"source": "sheet", "ok": True}
 
 
 @app.get("/api/supplies")
@@ -352,7 +366,7 @@ def _review_flag(inventory: list[dict], item_name: str) -> bool:
         name = (rec.get("Name") or rec.get("name") or "").strip().lower()
         if name == needle:
             review = (rec.get("Review") or "").strip()
-            return review.lower() == "review needed"
+            return review.lower() in ("review needed", "yes")
     return False
 
 
@@ -366,6 +380,15 @@ def _inventory_primary_key(record: dict) -> str:
 
 @app.post("/requests")
 def submit_org_request(body: OrgRequestBody):
+    if db.enabled():
+        inventory = get_inventory_records()
+        request_id = db.create_request(body.org_name, body.org_email, [
+            {"item_name": i.item_name, "category": i.category, "quantity": i.quantity,
+             "review_flag": _review_flag(inventory, i.item_name)}
+            for i in body.items
+        ])
+        return {"request_id": request_id, "status": "Under Review"}
+
     if _use_sample_data():
         request_id = _make_request_id()
         ts = datetime.now(timezone.utc).isoformat()
@@ -404,6 +427,18 @@ def submit_org_request(body: OrgRequestBody):
 
 @app.patch("/requests/{request_id}/status")
 async def update_org_request_status(request_id: str, body: StatusUpdateBody):
+    if db.enabled():
+        rows = [r for r in db.get_requests() if r["Request ID"].strip() == request_id]
+        if not rows or not db.set_request_status(request_id, body.status):
+            raise HTTPException(status_code=404, detail=f"Request ID '{request_id}' not found.")
+        if rows[0]["Org Email"]:
+            items = [
+                {"item_name": r["Item Name"], "category": r["Category"], "quantity": r["Quantity Requested"]}
+                for r in rows
+            ]
+            email_svc.send_status_update(rows[0]["Org Name"], rows[0]["Org Email"], body.status, items)
+        return {"request_id": request_id, "status": body.status}
+
     if _use_sample_data():
         updated_rows = 0
         for row in _sample_org_request_rows:
@@ -472,7 +507,12 @@ async def inventory_availability():
     inventory = get_inventory_records()
 
     org_requests: list[dict] = []
-    if not _use_sample_data():
+    if db.enabled():
+        try:
+            org_requests = db.get_requests()
+        except Exception:
+            pass
+    elif not _use_sample_data():
         try:
             spreadsheet = _open_requests_spreadsheet()
             ws = _org_requests_worksheet(spreadsheet)
@@ -524,6 +564,12 @@ async def inventory_availability():
 
 @app.get("/requests")
 async def list_org_requests(email: Optional[str] = None):
+    if db.enabled():
+        rows = db.get_requests()
+        if email:
+            rows = [r for r in rows if r["Org Email"].strip().lower() == email.strip().lower()]
+        return rows
+
     if _use_sample_data():
         if not email:
             return list(_sample_org_request_rows)
