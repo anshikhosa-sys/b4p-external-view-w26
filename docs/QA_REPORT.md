@@ -8,7 +8,7 @@ Owner: qa-tester. Updated 2026-10-09. Everything here ran against local instance
 | Suite | Result |
 |---|---|
 | pytest (backend, all files) | 298 passed, 0 failed |
-| Jest (`src/*.test.js`, McMaster UI) | 367 passed, 2 skipped (live-snapshot only), 0 failed |
+| Jest (`src/*.test.js`, McMaster UI) | 378 passed, 2 skipped (live-snapshot only), 0 failed |
 | `CI=true npm run build` | Compiled successfully, no warnings |
 | Browser pass (Phase 2, Chrome, 1,137-row sample, final UI) | 30 checks passed; FE-07 to FE-10 found and fixed; console clean from page load |
 | Production `/health` (read-only GET, once) | `{"ok": true}`, HTTP 200: the deployed backend predates this branch (no `source`/`email` fields) |
