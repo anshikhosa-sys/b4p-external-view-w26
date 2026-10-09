@@ -261,12 +261,10 @@ function StatusPill({ status }) {
 
 function AvailBadge({ availInfo }) {
   if (!availInfo) return null;
-  const { availability_status, requesting_org } = availInfo;
+  const { availability_status } = availInfo;
   const c = AVAIL_COLORS[availability_status] || AVAIL_COLORS.Available;
   let label = availability_status;
-  if (availability_status === 'Requested' && requesting_org) {
-    label = `Requested by ${requesting_org}`;
-  } else if (availability_status === 'Limited') {
+  if (availability_status === 'Limited') {
     label = 'Low Stock';
   }
   return (
@@ -498,9 +496,9 @@ export default function App() {
     if (qtyDelta > 0) {
       const avail = availMap[row];
       if (avail) {
-        if (avail.availability_status === 'Requested' && avail.requesting_org) {
+        if (avail.availability_status === 'Requested') {
           setCartWarning(
-            `This item has been requested by ${avail.requesting_org}. HQ will confirm availability upon review.`
+            'This item has already been requested by another organization. HQ will confirm availability upon review.'
           );
         } else if (avail.availability_status === 'Limited') {
           setCartWarning('This item has low stock. HQ will confirm availability upon review.');
@@ -897,7 +895,6 @@ export default function App() {
                                           <th style={{ padding: '12px 10px', width: '70px' }}>Qty</th>
                                           <th style={{ padding: '12px 10px', width: '110px' }}>Status</th>
                                           <th style={{ padding: '12px 10px', width: '150px' }}>Availability</th>
-                                          <th style={{ padding: '12px 10px', width: '180px' }}>Requested by</th>
                                           <th style={{ padding: '12px 10px', width: '130px' }} />
                                         </tr>
                                       </thead>
@@ -931,9 +928,6 @@ export default function App() {
                                               </td>
                                               <td style={{ padding: '14px 10px', verticalAlign: 'top' }}>
                                                 <AvailBadge availInfo={avail} />
-                                              </td>
-                                              <td style={{ padding: '14px 10px', verticalAlign: 'top', fontWeight: 600, color: isRequested ? '#7A6A00' : 'var(--color-text-secondary)' }}>
-                                                {isRequested && avail.requesting_org ? `Requested by: ${avail.requesting_org}` : '—'}
                                               </td>
                                               <td style={{ padding: '14px 10px', verticalAlign: 'top', textAlign: 'right', whiteSpace: 'nowrap' }}>
                                                 <button

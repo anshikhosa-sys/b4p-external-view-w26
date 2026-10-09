@@ -506,10 +506,8 @@ async def inventory_availability():
         if shipped:
             availability_status, tags, requesting_org, request_id = "Shipped", ["Shipped"], None, None
         elif pending:
-            availability_status = "Requested"
-            requesting_org = pending[0].get("Org Name", "")
-            request_id = pending[0].get("Request ID", "")
-            tags = [f"Requested by {requesting_org}"]
+            # Org names stay in the sheet for HQ; don't expose them to other clinics.
+            availability_status, tags, requesting_org, request_id = "Requested", ["Requested"], None, None
         elif is_limited:
             availability_status, tags, requesting_org, request_id = "Limited", ["Low Stock"], None, None
         else:
