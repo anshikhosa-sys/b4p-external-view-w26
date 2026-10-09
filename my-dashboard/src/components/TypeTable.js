@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, memo, useState } from 'react';
 import { ProductIcon } from '../catalogIcons';
 import { badgesFor, formatExpiry, formatMonth, stockLabel } from '../inventory';
 import Badges from './Badges';
@@ -13,10 +13,81 @@ function showGeneral(item, group) {
 
 const qty = (n) => (n == null ? '–' : n.toLocaleString('en-US'));
 
+// One product row (plus its lot breakdown when open). Memoised: changing one
+// stepper re-renders only that row, not the other few hundred.
+const ProductRow = memo(function ProductRow({ p, group, quantity, onQuantity, onOpenItem }) {
+  const [expanded, setExpanded] = useState(false);
+  const many = p.lots.length > 1;
+  const lotsId = `lots-${p.row}`;
+  return (
+    <Fragment>
+      <tr className="item-row" data-row={p.row}>
+        <td className="spec__supply">
+          <button type="button" className="linklike item-row__name" onClick={() => onOpenItem(p.row)}>
+            {p.name}
+          </button>
+          {showGeneral(p, group) && <span className="item-row__general">{p.general}</span>}
+          <Badges badges={badgesFor(p, p.onHold)} />
+        </td>
+        <td className="spec__maker" data-label="Maker">{p.manufacturer || '–'}</td>
+        <td className="spec__lot num" data-label="Lot">
+          {many ? (
+            <button
+              type="button"
+              className="linklike lots-toggle"
+              aria-expanded={expanded}
+              aria-controls={lotsId}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {p.lots.length} lots
+            </button>
+          ) : (p.lot || '–')}
+        </td>
+        <td className="spec__exp num" data-label="Expires">
+          {!p.expiry ? '–' : many ? `from ${formatMonth(p.expiry)}` : formatExpiry(p.expiry)}
+        </td>
+        <td className="spec__stock num" data-label="In stock">
+          <span className="visually-hidden">{stockLabel(p.quantity)}</span>
+          <span aria-hidden="true">{qty(p.quantity)}</span>
+        </td>
+        <td className="spec__qty">
+          <RequestControl item={p} quantity={quantity} onChange={(n) => onQuantity(p, n)} compact />
+        </td>
+      </tr>
+      {many && expanded && (
+        <tr className="lots-row" id={lotsId}>
+          <td colSpan={6}>
+            <table className="lots">
+              <caption className="visually-hidden">Lots of {p.name}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Lot</th>
+                  <th scope="col">Box</th>
+                  <th scope="col">Expires</th>
+                  <th scope="col" className="lots__qty">In stock</th>
+                </tr>
+              </thead>
+              <tbody>
+                {p.lots.map((l) => (
+                  <tr key={l.id}>
+                    <td>{l.lot || '–'}</td>
+                    <td>{[l.box && `Box ${l.box}`, l.pallet && `pallet ${l.pallet}`].filter(Boolean).join(', ') || '–'}</td>
+                    <td>{l.expiry ? formatExpiry(l.expiry) : '–'}</td>
+                    <td className="lots__qty">{qty(l.quantity)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+});
+
 // One product type: drawing once in the header, then a dense spec table with
-// one row per product; products held in several lots expand to show them.
-export default function TypeTable({ group, quantityOf, onQuantity, onOpenItem, limit, headingLevel = 2 }) {
-  const [open, setOpen] = useState({});
+// one row per product (A–Z). `quantities` is the cart as a Map(product id -> qty).
+function TypeTable({ group, quantities, onQuantity, onOpenItem, limit, headingLevel = 2 }) {
   const Heading = `h${headingLevel}`;
   const rows = limit ? group.items.slice(0, limit) : group.items;
   const headingId = `type-${group.slug}${group.category ? `-${group.category.slug}` : ''}`;
@@ -41,80 +112,28 @@ export default function TypeTable({ group, quantityOf, onQuantity, onOpenItem, l
           </tr>
         </thead>
         <tbody>
-          {rows.map((p) => {
-            const many = p.lots.length > 1;
-            const expanded = !!open[p.id];
-            const lotsId = `lots-${p.row}`;
-            return (
-              <Fragment key={p.id}>
-                <tr className="item-row" data-row={p.row}>
-                  <td className="spec__supply">
-                    <button type="button" className="linklike item-row__name" onClick={() => onOpenItem(p.row)}>
-                      {p.name}
-                    </button>
-                    {showGeneral(p, group) && <span className="item-row__general">{p.general}</span>}
-                    <Badges badges={badgesFor(p, p.onHold)} />
-                  </td>
-                  <td className="spec__maker" data-label="Maker">{p.manufacturer || '–'}</td>
-                  <td className="spec__lot num" data-label="Lot">
-                    {many ? (
-                      <button
-                        type="button"
-                        className="linklike lots-toggle"
-                        aria-expanded={expanded}
-                        aria-controls={lotsId}
-                        onClick={() => setOpen((o) => ({ ...o, [p.id]: !expanded }))}
-                      >
-                        {p.lots.length} lots
-                      </button>
-                    ) : (p.lot || '–')}
-                  </td>
-                  <td className="spec__exp num" data-label="Expires">
-                    {!p.expiry ? '–' : many ? `from ${formatMonth(p.expiry)}` : formatExpiry(p.expiry)}
-                  </td>
-                  <td className="spec__stock num" data-label="In stock">
-                    <span className="visually-hidden">{stockLabel(p.quantity)}</span>
-                    <span aria-hidden="true">{qty(p.quantity)}</span>
-                  </td>
-                  <td className="spec__qty">
-                    <RequestControl item={p} quantity={quantityOf(p.id)} onChange={(n) => onQuantity(p, n)} compact />
-                  </td>
-                </tr>
-                {many && expanded && (
-                  <tr className="lots-row" id={lotsId}>
-                    <td colSpan={6}>
-                      <table className="lots">
-                        <caption className="visually-hidden">Lots of {p.name}, earliest expiry first</caption>
-                        <thead>
-                          <tr>
-                            <th scope="col">Lot</th>
-                            <th scope="col">Box</th>
-                            <th scope="col">Expires</th>
-                            <th scope="col" className="lots__qty">In stock</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {p.lots.map((l) => (
-                            <tr key={l.id} className={l.expiryState === 'expired' ? 'lots__expired' : undefined}>
-                              <td>{l.lot || '–'}</td>
-                              <td>{[l.box && `Box ${l.box}`, l.pallet && `pallet ${l.pallet}`].filter(Boolean).join(', ') || '–'}</td>
-                              <td>
-                                {l.expiry ? formatExpiry(l.expiry) : '–'}
-                                {l.expiryState === 'expired' && ' (expired)'}
-                              </td>
-                              <td className="lots__qty">{qty(l.quantity)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
-            );
-          })}
+          {rows.map((p) => (
+            <ProductRow
+              key={p.id}
+              p={p}
+              group={group}
+              quantity={quantities.get(p.id) || 0}
+              onQuantity={onQuantity}
+              onOpenItem={onOpenItem}
+            />
+          ))}
         </tbody>
       </table>
     </section>
   );
 }
+
+// Skip re-rendering a whole section unless one of its own rows' quantities changed.
+function sameSection(a, b) {
+  if (a.group !== b.group || a.limit !== b.limit || a.onQuantity !== b.onQuantity || a.onOpenItem !== b.onOpenItem) return false;
+  if (a.quantities === b.quantities) return true;
+  const rows = a.limit ? a.group.items.slice(0, a.limit) : a.group.items;
+  return rows.every((p) => a.quantities.get(p.id) === b.quantities.get(p.id));
+}
+
+export default memo(TypeTable, sameSection);

@@ -1,10 +1,16 @@
 import { useEffect } from 'react';
+import useProgressive, { budgetGroups } from '../progressive';
 import Filters from './Filters';
 import { EmptyState } from './States';
 import TypeTable from './TypeTable';
 import TypeTiles from './TypeTiles';
 
-export default function CategoryPage({ category, groups, count, filters, setFilter, onClearFilters, typeSlug, tableProps, hiddenCount = 0 }) {
+export default function CategoryPage({ category, groups, count, filters, setFilter, onClearFilters, typeSlug, tableProps }) {
+  const progressive = useProgressive(count, `${category.slug}|${count}`);
+  // A deep link to one type renders everything at once so the jump lands.
+  const budget = typeSlug ? count : progressive;
+  const { shown } = budgetGroups(groups, budget);
+
   // #/c/<category>/<type> jumps to that type's table.
   useEffect(() => {
     if (!typeSlug) return;
@@ -30,12 +36,7 @@ export default function CategoryPage({ category, groups, count, filters, setFilt
           action={<button type="button" className="btn btn--secondary" onClick={onClearFilters}>Show everything</button>}
         />
       ) : (
-        groups.map((g) => <TypeTable key={g.slug} group={g} {...tableProps} />)
-      )}
-      {hiddenCount > 0 && (
-        <p className="footnote">
-          {hiddenCount} unlabelled {hiddenCount === 1 ? 'item isn’t' : 'items aren’t'} shown. Ask HQ if you’re looking for something specific.
-        </p>
+        shown.map(({ group, limit }) => <TypeTable key={group.slug} group={group} limit={limit} {...tableProps} />)
       )}
     </div>
   );

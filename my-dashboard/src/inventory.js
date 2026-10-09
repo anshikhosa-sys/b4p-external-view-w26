@@ -9,6 +9,9 @@ const DAY_MS = 86400000;
 
 const str = (v) => (v == null ? '' : String(v).trim());
 
+// One shared collator: A–Z ignoring case, numbers in numeric order ("2" < "10").
+export const collate = new Intl.Collator('en', { numeric: true, sensitivity: 'base' }).compare;
+
 function capitalize(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
@@ -201,12 +204,11 @@ export function canRequest(item) {
 // Badges in display order. kind maps to a CSS modifier.
 export function badgesFor(item, onHold) {
   const out = [];
-  if (item.expiryState === 'expired') out.push({ kind: 'danger', label: 'Expired' });
   if (onHold) out.push({ kind: 'hold', label: 'On hold' });
-  if (item.quantity != null && item.quantity > 0 && item.quantity <= ONLY_FEW_LEFT && !onHold && item.expiryState !== 'expired') {
-    out.push({ kind: 'warn', label: `Only ${item.quantity} left` });
+  if (item.quantity != null && item.quantity > 0 && item.quantity <= ONLY_FEW_LEFT && !onHold) {
+    out.push({ kind: 'low', label: 'Low stock' });
   }
-  if (item.expiryState === 'soon') out.push({ kind: 'warn', label: 'Expires soon' });
+  if (item.expiryState === 'soon') out.push({ kind: 'soon', label: 'Expires soon' });
   if (item.needsReview) out.push({ kind: 'info', label: 'Needs HQ check' });
   return out;
 }
@@ -224,11 +226,12 @@ export function matchesSearch(item, query) {
 
 // Everything except the subcategory chip, so chip counts reflect the other filters.
 export function applyBaseFilters(items, { query = '', inStockOnly = false, hideExpiring = false, holds = {} } = {}) {
+  const terms = str(query).toLowerCase().split(/\s+/).filter(Boolean);
   return items.filter((item) => {
     if (item.unlabelled) return false;
     if (inStockOnly && (!item.quantity || item.onHold || holds[item.id])) return false;
     if (hideExpiring && (item.allExpiring ?? item.expiryState)) return false;
-    return matchesSearch(item, query);
+    return terms.every((t) => item.searchText.includes(t));
   });
 }
 
@@ -237,22 +240,18 @@ export function subcategoryCounts(items) {
   for (const item of items) counts.set(item.subcategory, (counts.get(item.subcategory) || 0) + 1);
   return [...counts.entries()]
     .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => {
-      if (a.name === OTHER_SUBCATEGORY) return 1;
-      if (b.name === OTHER_SUBCATEGORY) return -1;
-      return b.count - a.count || a.name.localeCompare(b.name);
-    });
+    .sort((a, b) => collate(a.name, b.name));
 }
 
 export const SORTS = {
+  name: 'Name, A to Z',
   stock: 'Most in stock',
   expiry: 'Expiring soonest',
-  name: 'Name, A to Z',
 };
 
-const byName = (a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' });
+const byName = (a, b) => collate(a.name, b.name);
 
-export function sortItems(items, sort) {
+export function sortItems(items, sort = 'name') {
   const out = [...items];
   if (sort === 'name') return out.sort(byName);
   if (sort === 'expiry') {
@@ -266,7 +265,8 @@ export function sortItems(items, sort) {
       return a.expiry.localeCompare(b.expiry) || byName(a, b);
     });
   }
-  return out.sort((a, b) => (b.quantity ?? -1) - (a.quantity ?? -1) || byName(a, b));
+  if (sort === 'stock') return out.sort((a, b) => (b.quantity ?? -1) - (a.quantity ?? -1) || byName(a, b));
+  return out.sort(byName);
 }
 
 export function filterAndSort(items, filters) {
@@ -354,11 +354,7 @@ export function uniqueSlugs(names) {
 
 // Rows in a table: requestable first, then by name.
 export function sortRows(items) {
-  return [...items].sort((a, b) => {
-    const ea = a.expiryState === 'expired' ? 1 : 0;
-    const eb = b.expiryState === 'expired' ? 1 : 0;
-    return ea - eb || byName(a, b);
-  });
+  return [...items].sort(byName);
 }
 
 // Group items (which already carry .type and .icon) by product type, biggest first.
@@ -373,7 +369,7 @@ export function groupByType(items) {
   return [...groups.values()]
     .map((g) => ({ ...g, slug: slugs.get(g.label) }))
     .map((g) => ({ ...g, items: sortRows(g.items) }))
-    .sort((a, b) => b.items.length - a.items.length || a.label.localeCompare(b.label));
+    .sort((a, b) => collate(a.label, b.label));
 }
 
 // [{name, slug, count, types}] in the same order as the chips used: biggest first, Other last.
@@ -398,18 +394,19 @@ export function unlabelledCount(items) {
   return items.filter((i) => i.unlabelled).length;
 }
 
-// Types whose own name matches every search term.
+// Types whose own name matches every search term (at a word start).
 export function matchingTypes(catalog, query) {
   const terms = str(query).toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
   const out = [];
   for (const cat of catalog) {
     for (const type of cat.types) {
-      const hay = `${type.label} ${cat.name}`.toLowerCase();
-      if (terms.every((t) => hay.includes(t))) out.push({ ...type, category: cat });
+      // Word starts only ("gau" finds Gauze), so a one-letter search doesn't light up every tile.
+      const words = type.label.toLowerCase().split(/[^a-z0-9]+/);
+      if (terms.every((t) => words.some((w) => w.startsWith(t)))) out.push({ ...type, category: cat });
     }
   }
-  return out;
+  return out.sort((a, b) => collate(a.label, b.label) || collate(a.category.name, b.category.name));
 }
 
 // ── Products: one row per Name + Maker, with its lots inside ─────────────
@@ -432,20 +429,21 @@ function fefoRank(lot) {
   return lot.expiry ? `0${lot.expiry}` : '1';
 }
 
+// Expired lots are left out entirely: they never show, count or get requested.
 export function groupProducts(items, holds = {}) {
   const byKey = new Map();
   for (const item of items) {
-    if (item.unlabelled) continue;
+    if (item.unlabelled || item.expiryState === 'expired') continue;
     const key = productKey(item);
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(item);
   }
   return [...byKey.entries()].map(([key, group]) => {
-    const lots = [...group].sort((a, b) => fefoRank(a).localeCompare(fefoRank(b)) || a.id - b.id);
-    const usable = lots.filter((l) => l.expiryState !== 'expired');
-    const known = usable.filter((l) => l.quantity != null);
-    const first = lots[0];
-    const next = usable.find((l) => l.expiry);
+    const first = group.reduce((a, b) => (fefoRank(b) < fefoRank(a) || (fefoRank(b) === fefoRank(a) && b.id < a.id) ? b : a));
+    // Lot breakdowns read A–Z by lot number, then by expiry.
+    const lots = [...group].sort((a, b) => collate(a.lot, b.lot) || fefoRank(a).localeCompare(fefoRank(b)) || a.id - b.id);
+    const known = lots.filter((l) => l.quantity != null);
+    const next = lots.filter((l) => l.expiry).reduce((a, b) => (!a || b.expiry < a.expiry ? b : a), null);
     // Show the shortest spelling of the merged maker ("BD").
     const makers = lots.map((l) => l.manufacturer).filter(Boolean);
     const manufacturer = makers.reduce((a, b) => (b.length < a.length ? b : a), makers[0] || '');
@@ -455,12 +453,12 @@ export function groupProducts(items, holds = {}) {
       id: key,
       row: first.id,
       lots,
-      quantity: known.length ? known.reduce((n, l) => n + l.quantity, 0) : usable.length ? null : 0,
+      quantity: known.length ? known.reduce((n, l) => n + l.quantity, 0) : null,
       expiry: next ? next.expiry : '',
-      expiryState: usable.length ? (next ? next.expiryState : null) : 'expired',
-      allExpiring: usable.every((l) => l.expiryState),
+      expiryState: next ? next.expiryState : null,
+      allExpiring: lots.every((l) => l.expiryState),
       needsReview: lots.some((l) => l.needsReview),
-      onHold: usable.length > 0 && usable.every((l) => holds[l.id]),
+      onHold: lots.every((l) => holds[l.id]),
       searchText: [...new Set(lots.map((l) => l.searchText))].join(' '),
     };
   });
@@ -469,7 +467,9 @@ export function groupProducts(items, holds = {}) {
 // Split a requested quantity across a product's lots, earliest expiry first,
 // skipping expired lots. Returns [{item, quantity}] (one POST line per sheet row).
 export function allocateFefo(product, quantity) {
-  const usable = product.lots.filter((l) => l.expiryState !== 'expired' && l.quantity !== 0);
+  const usable = product.lots
+    .filter((l) => l.expiryState !== 'expired' && l.quantity !== 0)
+    .sort((a, b) => fefoRank(a).localeCompare(fefoRank(b)) || a.id - b.id);
   const out = [];
   let left = quantity;
   for (const lot of usable) {

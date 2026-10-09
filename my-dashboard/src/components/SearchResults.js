@@ -1,10 +1,11 @@
 import { useState } from 'react';
+import useProgressive, { budgetGroups } from '../progressive';
 import Filters from './Filters';
 import { EmptyState } from './States';
 import TypeTable from './TypeTable';
 import TypeTiles from './TypeTiles';
 
-const ROW_BUDGET = 150; // rows rendered before "Show more"
+const ROW_BUDGET = 150; // rows before "Show more"
 
 export default function SearchResults({ query, types, groups, count, filters, setFilter, onClearSearch, tableProps }) {
   const [budget, setBudget] = useState(ROW_BUDGET);
@@ -13,15 +14,9 @@ export default function SearchResults({ query, types, groups, count, filters, se
     setLastQuery(query);
     setBudget(ROW_BUDGET);
   }
-
-  let used = 0;
-  const shown = [];
-  for (const g of groups) {
-    if (used >= budget) break;
-    const take = Math.min(g.items.length, budget - used);
-    shown.push({ group: g, limit: take < g.items.length ? take : undefined });
-    used += take;
-  }
+  const progressive = useProgressive(Math.min(budget, count), `${query}|${count}`);
+  const { shown, used } = budgetGroups(groups, progressive);
+  const capped = Math.min(budget, count);
 
   return (
     <div className="search-results">
@@ -43,12 +38,12 @@ export default function SearchResults({ query, types, groups, count, filters, se
       ) : (
         <>
           {shown.map(({ group, limit }) => (
-            <TypeTable key={`${group.category ? group.category.slug : ''}-${group.slug}`} group={group} limit={limit} {...tableProps} />
+            <TypeTable key={group.slug} group={group} limit={limit} {...tableProps} />
           ))}
-          {used < count && (
+          {used >= capped && capped < count && (
             <div className="more">
               <p className="more__count">
-                Showing <span className="num">{used}</span> of <span className="num">{count.toLocaleString('en-US')}</span>
+                Showing <span className="num">{capped}</span> of <span className="num">{count.toLocaleString('en-US')}</span>
               </p>
               <button type="button" className="btn btn--secondary" onClick={() => setBudget((b) => b + ROW_BUDGET)}>
                 Show more

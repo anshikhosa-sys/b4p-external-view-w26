@@ -11,18 +11,14 @@
 // warm with the API delayed 3 s (proves the cached inventory renders first), and
 // cold with the API delayed 3 s (what a Render cold start looks like on a first visit).
 
-const { spawn } = require('child_process');
 const fs = require('fs');
-const os = require('os');
-const path = require('path');
+const { CDP, launch, sleep } = require('./cdp');
 
 const APP_URL = process.env.APP_URL || 'http://127.0.0.1:3765/#/c/needles-and-syringes'; // a category page has rows
 const API_ORIGIN = (process.env.API_ORIGIN || 'http://127.0.0.1:8765').replace(/\/$/, '');
 const ROW = process.env.ROW_SELECTOR || 'tr.item-row, [data-row]';
-const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const PORT = Number(process.env.CDP_PORT || 9333);
 const API_DELAY = 3000;
-const BUDGET = { warmFirstRowMs: 1000, coldFirstRowMs: 2500, images: 0, fonts: 0, cls: 0.1 };
+const BUDGET = { warmFirstRowMs: 1000, coldFirstRowMs: 2500, images: 0, fonts: 0, localFonts: 1, cls: 0.1 };
 
 for (const u of [APP_URL, API_ORIGIN]) {
   const host = new URL(u).hostname;
@@ -32,7 +28,6 @@ for (const u of [APP_URL, API_ORIGIN]) {
   }
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const INSTRUMENT = `
   window.__perf = { cls: 0, shifts: [], firstRow: null };
@@ -60,54 +55,6 @@ const INSTRUMENT = `
   new MutationObserver((_, obs) => { if (seen()) obs.disconnect(); })
     .observe(document, { childList: true, subtree: true });
 `;
-
-class CDP {
-  constructor(url) {
-    this.ws = new WebSocket(url);
-    this.id = 0;
-    this.pending = new Map();
-    this.handlers = [];
-    this.ws.onmessage = (m) => {
-      const msg = JSON.parse(m.data);
-      if (msg.id && this.pending.has(msg.id)) {
-        const { resolve, reject } = this.pending.get(msg.id);
-        this.pending.delete(msg.id);
-        if (msg.error) reject(new Error(`${msg.error.message}`));
-        else resolve(msg.result);
-      } else if (msg.method) {
-        this.handlers.forEach((h) => h(msg));
-      }
-    };
-    this.ready = new Promise((r, j) => { this.ws.onopen = r; this.ws.onerror = j; });
-  }
-
-  send(method, params = {}) {
-    const id = ++this.id;
-    this.ws.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
-  }
-
-  on(fn) { this.handlers.push(fn); }
-}
-
-async function launch() {
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'b4p-perf-'));
-  const chrome = spawn(CHROME, [
-    '--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`,
-    '--no-first-run', '--no-default-browser-check', '--disable-extensions',
-    '--window-size=1280,800', 'about:blank',
-  ], { stdio: 'ignore' });
-  for (let i = 0; i < 50; i += 1) {
-    try {
-      const targets = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
-      const page = targets.find((t) => t.type === 'page');
-      if (page) return { chrome, profile, wsUrl: page.webSocketDebuggerUrl };
-    } catch { /* not up yet */ }
-    await sleep(200);
-  }
-  chrome.kill();
-  throw new Error('Chrome did not start');
-}
 
 async function load(cdp, { label, cacheDisabled, clearStorage, delayApi }) {
   const requests = [];
@@ -159,7 +106,10 @@ async function load(cdp, { label, cacheDisabled, clearStorage, delayApi }) {
   const local = new Set([new URL(APP_URL).host, new URL(API_ORIGIN).host]);
   const external = [...new Set(requests.map((q) => { try { return new URL(q.url).host; } catch { return ''; } }))]
     .filter((h) => h && !local.has(h));
-  const fonts = requests.filter((q) => q.type === 'Font' || /fonts\.(googleapis|gstatic)\.com/.test(q.url)).length;
+  const isFont = (q) => q.type === 'Font' || /fonts\.(googleapis|gstatic)\.com/.test(q.url);
+  const appHost = new URL(APP_URL).host;
+  const fonts = requests.filter((q) => isFont(q) && new URL(q.url).host !== appHost).length; // external
+  const localFonts = requests.filter((q) => isFont(q) && new URL(q.url).host === appHost).length;
   const images = requests.filter((q) => q.type === 'Image').length;
   return {
     label,
@@ -173,6 +123,7 @@ async function load(cdp, { label, cacheDisabled, clearStorage, delayApi }) {
     byType,
     images,
     fonts,
+    localFonts,
     imageUrls: requests.filter((q) => q.type === 'Image').map((q) => q.url),
     external,
   };
@@ -239,7 +190,8 @@ async function load(cdp, { label, cacheDisabled, clearStorage, delayApi }) {
     if (r.firstRowMs == null) fails.push(`${r.label}: no row matched ${ROW}`);
     else if (limit != null && r.firstRowMs > limit) fails.push(`${r.label}: first row ${r.firstRowMs} ms > ${limit} ms`);
     if (r.images > BUDGET.images) fails.push(`${r.label}: ${r.images} image requests (${r.imageUrls.join(', ')})`);
-    if (r.fonts > BUDGET.fonts) fails.push(`${r.label}: ${r.fonts} font requests`);
+    if (r.fonts > BUDGET.fonts) fails.push(`${r.label}: ${r.fonts} external font requests`);
+    if (r.localFonts > BUDGET.localFonts) fails.push(`${r.label}: ${r.localFonts} self-hosted font requests (max ${BUDGET.localFonts})`);
     if (r.cls > BUDGET.cls) fails.push(`${r.label}: CLS ${r.cls}`);
     if (r.external.length) fails.push(`${r.label}: external hosts ${r.external.join(', ')}`);
   }

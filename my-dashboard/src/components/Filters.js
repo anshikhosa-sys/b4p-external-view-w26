@@ -11,7 +11,7 @@ export default function Filters({ filters, setFilter, count, noun = 'supplies' }
       </label>
       <label className="check">
         <input type="checkbox" checked={filters.hideExpiring} onChange={(e) => setFilter('hideExpiring', e.target.checked)} />
-        <span>Hide expired and expiring soon</span>
+        <span>Hide expiring soon</span>
       </label>
     </div>
   );

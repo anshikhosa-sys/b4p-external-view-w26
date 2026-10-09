@@ -370,3 +370,22 @@ fallback), and checks each origin against its directive (script, stylesheet, ima
 `img-src` or `connect-src`). `test_removed_origins_stay_removed` bans Drive, googleusercontent and Google Fonts from the code and the CSP.
 It was a strict xfail because the dead `driveFileId`/`thumbnailUrl` helpers (plus the `imageId` plumbing in `normalizeItem`/`useCart`)
 remained in `src/inventory.js`. **Fixed, verified:** frontend-engineer deleted them, and the test now passes.
+
+## Round 3 regression (perf, branding, footer) — 2026-10-09
+
+Clean. pytest 298 passed; the `CI=true` deploy build compiles; no new sinks (only the static icon sprite); no new origins in the built
+JS/CSS; storage keys unchanged (`b4p.cart.v1`, `b4p.inventory.v1`, `b4p.org.v1`).
+- Footer `mailto:` uses a build-time `REACT_APP_CONTACT_EMAIL`, regex-checked with a fixed fallback. The `mailto:` prefix is
+  hard-coded, so the value cannot become a `javascript:` URL. Only the deployer controls it.
+- `progressive.js` chunking cancels its idle callbacks on cleanup. This is performance only, with no data-driven code.
+- `groupProducts` now drops expired lots before grouping, so every product has at least one lot and `allocateFefo`'s
+  `product.lots[0]` fallback can't be undefined. `allocateFefo` re-sorts by FEFO rank itself, so the new A–Z lot display order does
+  not affect allocation. A 2000-product fuzz (now also asserting expiry order) and tampered carts with the v2 cache on the real
+  `<App/>` both pass.
+- Self-hosted Manrope under `/fonts` is covered by `font-src 'self'`, and the derived CSP test treats relative URLs as same-origin.
+- **Round 3 final (self-hosted font):** `public/fonts/manrope-latin-var.woff2` is a genuine WOFF2 (`wOF2` magic, 24 KB) with
+  `OFL.txt`, and the build serves it same-origin from `/fonts` (`font-src 'self'`). `index.html` now has an inline `<style>`
+  @font-face, which works only because `style-src` keeps `'unsafe-inline'`. The derived CSP test now fails if that allowance
+  (or a hash) is removed while inline styles exist, or if an inline `<script>` is added, and it checks absolute `url()`s inside
+  inline styles. Both negative cases were self-tested. `matchingTypes` uses plain `startsWith` word matching, and no `RegExp`
+  is built from user input anywhere in `src`.

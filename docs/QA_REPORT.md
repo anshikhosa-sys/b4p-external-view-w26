@@ -8,7 +8,7 @@ Owner: qa-tester. Updated 2026-10-09. Everything here ran against local instance
 | Suite | Result |
 |---|---|
 | pytest (backend, all files) | 298 passed, 0 failed |
-| Jest (`src/*.test.js`, McMaster UI) | 378 passed, 2 skipped (live-snapshot only), 0 failed |
+| Jest (`src/*.test.js`, McMaster UI, round 3) | 400 passed, 2 skipped (live-snapshot only), 0 failed |
 | `CI=true npm run build` | Compiled successfully, no warnings |
 | Browser pass (Phase 2, Chrome, 1,137-row sample, final UI) | 30 checks passed; FE-07 to FE-10 found and fixed; console clean from page load |
 | Production `/health` (read-only GET, once) | `{"ok": true}`, HTTP 200: the deployed backend predates this branch (no `source`/`email` fields) |
@@ -78,6 +78,88 @@ Backend tests marked "both" run once in sheet-sample mode and once in Postgres m
 | App: list default + grid remembered, 101st supply refused with toast, renamed row removed with notice, old line re-capped, Remove → Undo in place, `#/review` and `#/checkout`, forged `#/sent/...` links go to catalog, hex-suffix ID opens confirmation | App.test.js | Jest | pass |
 | `applyAvailability` (remaining, holds, junk input, duplicate-name cap), `statusInfo` (Delivered, Denied, Cancelled), `restore` | inventory.test.js, useCart.test.js | Jest | pass (after FE-07 fix) |
 | Every App test fails if React logs a console error | App.test.js | Jest | pass |
+
+### Scroll smoothness and input latency (`scripts/perf-scroll.js`)
+
+`node scripts/perf-scroll.js` (local only). Viewport 1440x900. A wheel-style `Input.synthesizeScrollGesture` at 2,400 px/s runs down each page while a rAF loop records frame times and a PerformanceObserver records long tasks. Frames are uncapped (headless and occluded windows pace at 30 Hz), so every frame time is that frame's real cost; anything over 16.7 ms would miss a 60 Hz deadline. INP is the Event Timing duration (input to next paint) for one Add click and five "+" clicks on a well-stocked row. Budgets: < 2% of frames over 33 ms, no long tasks at 1x, INP < 200 ms.
+
+**Baseline BEFORE the smooth-scroll round** (build f628261 + working tree, two runs; second run in brackets):
+
+| CPU | Page | Rows | DOM nodes | Scrolled px | fps capacity | frames > 17 ms | > 33 ms | p95 / worst | long tasks |
+|---|---|---|---|---|---|---|---|---|---|
+| 1x | All (landing) | 0 | 734 | 694 | 66 [66] | 3.3% [3.3%] | 0 | 18 / 18 ms | 0 |
+| 1x | Biggest, `#/c/misc-surgical` | 133 | 2,994 | 14,453 | 71 [75] | 30.8% [16.4%] | 0 | 18 / 18 ms | 0 |
+| 1x | Search "a" | 150 | 2,495 | 10,837 | 73 [71] | 28.6% [21.0%] | 0 | 18 / 18 ms | 0 |
+| 4x | All (landing) | 0 | 734 | 694 | 65 [63] | 27.1% [29.3%] | 0 | 18 / 18 ms | 0 |
+| 4x | Biggest | 133 | 3,003 | 14,455 | 68 [68] | 17.8% [22.7%] | 0 | 18 / 21 ms | 0 |
+| 4x | Search "a" | 150 | 2,504 | 10,911 | 70 [70] | 21.9% [21.7%] | 0 | 18 / 23 ms | 0 |
+
+| CPU | Add + five "+" clicks | INP (worst) | median |
+|---|---|---|---|
+| 1x | 5 interactions | 24 ms | 16 ms |
+| 4x | 6 interactions | 56 ms | 24 ms |
+
+How to read it: no long tasks and no frames over 33 ms at either CPU speed. Most frames finish just around the 16.7 ms line (p95 18 ms), so a laptop under load can drop single frames, but there are no visible stalls. The share of frames over 17 ms swings by about 10 points between runs, so compare p95, worst and long tasks rather than that percentage alone.
+
+**AFTER round 3** (alphabetical order, expired items hidden, progressive rows, memoised rows, `content-visibility: auto` on type sections, Manrope; two runs, second in brackets):
+
+| CPU | Page | Rows | DOM nodes | Scrolled px | fps capacity | p95 / worst | > 33 ms | long tasks |
+|---|---|---|---|---|---|---|---|---|
+| 1x | All (landing) | 0 | 824 | 646 | 66 [68] | 18 / 18 ms | 0 | 0 |
+| 1x | Biggest, `#/c/misc-surgical` | 128 | 3,211 | 14,599 | 81 [83] | 18 / 24 [20] ms | 0 | 0 |
+| 1x | Search "a" | 150 | 4,481 | 15,000 (cap) | 75 [78] | 18 / 24 ms | 0 | 0 |
+| 4x | All (landing) | 0 | 824 | 646 | 65 [64] | 18 / 18 ms | 0 | 0 |
+| 4x | Biggest | 128 | 3,220 | 14,601 | 77 [78] | 18 / 58 [57] ms | 0.2% (one frame) | 0 |
+| 4x | Search "a" | 150 | 4,490 | 15,000 | 72 [73] | 18 / 23 [39] ms | 0 [0.2%] | 0 |
+
+INP for Add plus five "+" clicks: 24 ms at 1x (median 16 ms); 16–24 ms at 4x (median 16 ms), down from 56 ms.
+
+Before vs after:
+- **Click latency** at 4x CPU dropped from 56 ms to 16–24 ms (memoised rows).
+- **Frame capacity** on the biggest category rose from about 71-75 to 77-83 fps.
+- **p95 frame** is unchanged at 18 ms. The synthetic 60 Hz gesture seems to set that floor, so the "< 16.7 ms" target can't be shown with this method.
+- **Worst frame** got worse at 4x: one 35-58 ms frame near the top of the biggest category (y ≈ 500, all rows already rendered). It looks like the first type section rendering as it enters the viewport under `content-visibility: auto`. Baseline worst was 21 ms. Reported as FE-17 (Low).
+- **Search "a"** builds a page with about 1.8x the DOM nodes, because every matching type now has a tile, and still has 0 long tasks.
+
+**Load timing, round 3:** first row cold 74 ms, warm 49 ms, warm with API +3 s 48 ms. Search 103-109 ms. One self-hosted font request (`/fonts/manrope-latin-var.woff2`, 24 KB, preloaded); 0 images, 0 external hosts, CLS 0.000.
+
+**Round 3 final (with Manrope and the word-start type matching):** budget JS 73.6 / CSS 12.6 / sprite 6.4 KB, self-hosted font 24 KB, external fonts 0. Load: first row cold 77 ms, warm 56 ms, warm with API +3 s 48 ms; search 103-106 ms; CLS 0; 0 images. Scroll at 1x: worst frame 18-19 ms on every page, 0 long tasks. At 4x: biggest category has one 41 ms frame at y ≈ 519 (FE-17), search "a" worst 23 ms, and its DOM fell from 4,481 to 3,089 nodes now that "a" no longer lights up every tile. INP 24 ms at 1x, 16 ms at 4x.
+
+Browser (real Chrome, 1,137-row snapshot):
+- Title, brand and footer mailto are right. Body and h1 are Manrope 300; buttons and stock are 700.
+- Add, then the drawer (focus on Close), Review, Submit: the backend line is "<sheet name> [Lot —, Box 2, Pallet 2]". The confirmation says "1 supply, 1 unit", and My requests says the same.
+- 360px: no overflow on 7 routes, including a type anchor and an item deep link.
+- Console clean.
+
+Notes for the lead (UX, not bugs):
+- With every type tile shown, a phone has to scroll 2,313 px (about 3 screens of 43 tiles) on Misc Surgical before the first product row. Tapping a tile does jump straight to its table.
+- The landing page still truncates each category to 8 type links plus "N more types".
+- The landing grid flows down columns, so it reads A-Z down each column, not across rows.
+
+**After the FE-17 fix** (`content-visibility` removed; 5 runs at 4x, 2 at 1x): misc-surgical worst frame 19-23 ms at 4x and 22-24 ms at 1x, 0 frames over 33 ms. Search "a" worst 19-24 ms. 0 long tasks anywhere. INP 24 ms (median 16 ms) at 1x and 4x. Frame capacity on misc-surgical is 68-71 fps at 4x, a few fps below the content-visibility build, as frontend-engineer expected. One landing run in 5 at 4x had a single 57 ms frame after the gesture had ended (scrollY at the bottom, 929 ms in), so it happened after scrolling stopped. It didn't reproduce in the other 4 runs. Load: cold 83 ms, warm 58 ms, search 103-110 ms. Budget: JS 73.6, CSS 12.5 KB.
+
+**Landing shows every type; compact phone tiles** (fresh build): budget JS 73.5 / CSS 12.6 KB; Jest 399 passed / 2 skipped. 360px load: cold 82 ms, warm 58 ms, CLS 0.
+- Landing: 226 type links and no "N more types" link.
+- Misc Surgical, 43 tiles:
+
+| Width | Tile layout | Tile min height | Tile block | First product row | Overflow |
+|---|---|---|---|---|---|
+| 360 | compact, 2 columns | 44 px | 1,023 px | 1,410 px (was 2,313) | 0 |
+| 375 | compact, 2 columns | 44 px | 1,023 px | 1,410 px | 0 |
+| 600 | compact, 2 columns | 44 px | 968 px | 1,311 px | 0 |
+| 601 | desktop tiles, 2 columns | 64 px | 1,584 px | 1,928 px | 0 |
+
+- 360px: no overflow on `#/`, `#/review`, `#/requests`, `#/slip`, `#/item/2`, a type anchor, or search "syringe". Search shows 7 type tiles, and " in <Category>" is hidden.
+- Note: from 601 px up to the 900 px tree breakpoint (tablets in portrait), the large tiles still sit in 2 columns, so the first product row is lower there (1,928 px) than on a phone.
+
+**Landing in row order; search tiles show their category** (fresh build; budget JS 73.5 / CSS 12.7 KB; Jest 400 passed / 2 skipped):
+- The landing reads A-Z across rows at every width:
+  - 1440 px: 3 columns, first row Airway & Oxygen / Apparel / Catheters & Briefs.
+  - 1000 px: 2 columns.
+  - 360 px: 1 column.
+  - No overflow and no "more types" link at any width.
+- Search tiles show `.tile__cat`: at 375 px, "gauze" gives "Gauze sponges & pads" with "in Misc Surgical" and again with "in Wound Care & Bandages". At 360 px, "syringe" lines read "in Needles & Syringes" / "in IV Supplies", and the smallest tile is 45 px. Category-page tiles never render the line (new Jest test).
+- 360 / 375 px: no overflow on `#/`, a category, a type anchor, `#/item/2`, `#/slip`, `#/review`, `#/requests`, or either search. No console errors.
 
 ## Browser pass (McMaster layout)
 
@@ -164,10 +246,10 @@ cd .. && TEST_DATABASE_URL=postgresql:///b4p_test_qa .venv/bin/python -m pytest 
 
 | Budget | Limit | Last result (McMaster build, 1,137 rows → 890 products, local backend, headless Chrome) |
 |---|---|---|
-| JS, all chunks, gzip -9 | 75 KB | 72.2 KB, pass (3.7% headroom) |
+| JS, all chunks, gzip -9 | 75 KB | 73.6 KB, pass (1.9% headroom) |
 | CSS gzip | 15 KB | 12.4 KB, pass |
 | Icon sprite gzip (`src/productIcons/sprite.js`) | 12 KB | 5.5 KB, pass |
-| Web fonts | 0 | 0, pass |
+| Web fonts | self-hosted ≤ 40 KB (1 file), external 0 | 24 KB Manrope / 0, pass |
 | First table row, cold, 1280px (`#/c/needles-and-syringes`, 126 products) | < 2,500 ms | 167 ms |
 | First table row, warm | < 1,000 ms | 70 ms |
 | Warm with the API delayed 3 s | < 1,000 ms | 78 ms (saved copy renders first) |
@@ -211,6 +293,7 @@ Options: `WIDTH=360`, `CPU=4`, `SLOW_NET=1`, `SEARCH=a,b`, `VERBOSE=1` (layout-s
 | FE-14 | Low | frontend-engineer | Confirmation said "1 supply", My requests "2 supplies" for one FEFO-split request | Fixed, verified: both say "1 supply (2 lots), 25 units" |
 | FE-15 | Low | frontend-engineer (from bug-hunter) | Category/type slugs could collide ("Gloves & Masks" vs "Gloves and Masks", non-ASCII names) | Fixed (`uniqueSlugs`), verified by Jest |
 | FE-16 | Low | frontend-engineer (from bug-hunter) | `productKey` "|" collision; cart lines whose product vanished were silently dropped from the POST | Fixed, verified by Jest (stale-tab submit shows an inline error, 0 POSTs) |
+| FE-17 | Low | frontend-engineer | Round 3: one 35-58 ms frame (41 ms on the final build) at 4x CPU near the top of the biggest category, likely `content-visibility: auto` sections rendering on entry (baseline worst 21 ms) | Fixed (content-visibility removed), verified: misc-surgical worst 19-23 ms at 4x in 5 runs |
 | QA-09 | Low | email-engineer | `If-None-Match: *` returned 200 instead of 304 | Fixed, verified |
 | QA-08 | Low | email-engineer | README and the run instructions say `USE_SAMPLE_DATA=1 uvicorn main:app`, but `sample_inventory.json` is missing and `*.json` is gitignored, so `/api/supplies` fails on a fresh clone | Fixed, verified (repo `sample_inventory.json`, `SAMPLE_INVENTORY_PATH`) |
 

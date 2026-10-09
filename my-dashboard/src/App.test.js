@@ -124,10 +124,12 @@ describe('landing', () => {
     expect(document.querySelectorAll('img')).toHaveLength(0);
   });
 
-  test('unlabelled rows are hidden with a footnote', async () => {
-    at('#/');
-    render(<App />);
-    expect(await screen.findByText(/1 unlabelled item isn’t shown/)).toBeInTheDocument();
+  test('unlabelled rows are hidden (no footnote any more)', async () => {
+    await renderAt('#/');
+    fireEvent.change(screen.getByLabelText('Search supplies'), { target: { value: 'cardinal' } });
+    await screen.findByRole('heading', { level: 1, name: /Results for/ });
+    expect(screen.queryByText('Unnamed supply')).not.toBeInTheDocument();
+    expect(document.querySelectorAll('tr.item-row[data-row="8"]')).toHaveLength(0);
   });
 });
 
@@ -153,26 +155,24 @@ describe('category page', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Needles & Syringes' })).toBeInTheDocument();
   });
 
-  test('zero-stock and expired rows cannot be added', async () => {
+  test('zero-stock rows cannot be added', async () => {
     await renderAt('#/c/needles-and-syringes', /^Synthetic 10ml Syringe$/);
     expect(rowFor('Empty syringe box').querySelector('.spec__qty')).toHaveTextContent('Out of stock');
     expect(within(rowFor('Empty syringe box')).queryByRole('button', { name: /^Add/ })).not.toBeInTheDocument();
-    go('#/c/iv-supplies');
-    const old = (await screen.findByRole('button', { name: /^Old saline bag$/ })).closest('tr');
-    expect(within(old).getByText(/Expired, can’t be requested/)).toBeInTheDocument();
-    expect(within(old).queryByRole('button', { name: /add/i })).not.toBeInTheDocument();
   });
 
-  test('In stock only and Hide expired filters', async () => {
+  test('In stock only and Hide expiring soon filters', async () => {
+    const soon = new Date(Date.now() + 30 * 86400e3).toISOString().slice(0, 10);
+    handlers.supplies = () => response(200, [...SUPPLIES, supply(60, { Name: 'Soon gauze', 'Date of Expiration': soon })]);
     await renderAt('#/c/needles-and-syringes', /^Synthetic 10ml Syringe$/);
     userEvent.click(screen.getByLabelText('In stock only'));
     expect(screen.queryByRole('button', { name: /^Empty syringe box$/ })).not.toBeInTheDocument();
-    go('#/c/iv-supplies');
-    await screen.findByRole('heading', { level: 1, name: 'IV Supplies' });
-    userEvent.click(screen.getByLabelText('Hide expired and expiring soon'));
-    expect(await screen.findByText('Nothing here matches these filters')).toBeInTheDocument();
-    userEvent.click(screen.getByRole('button', { name: 'Show everything' }));
-    expect(screen.getByRole('button', { name: /^Old saline bag$/ })).toBeInTheDocument();
+    go('#/c/wound-care-and-bandages');
+    await screen.findByRole('button', { name: /^Soon gauze$/ });
+    expect(within(rowFor('Soon gauze')).getByText('Expires soon')).toBeInTheDocument();
+    userEvent.click(screen.getByLabelText('Hide expiring soon'));
+    expect(screen.queryByRole('button', { name: /^Soon gauze$/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Gauze pads 4x4$/ })).toBeInTheDocument();
   });
 
   test('a type link focuses that type section', async () => {
@@ -212,7 +212,7 @@ describe('search', () => {
 
   test('placeholder counts only listed supplies', async () => {
     await renderAt('#/');
-    expect(screen.getByLabelText('Search supplies')).toHaveAttribute('placeholder', 'Search 6 supplies');
+    expect(screen.getByLabelText('Search supplies')).toHaveAttribute('placeholder', 'Search 5 supplies'); // not the expired or unlabelled rows
   });
 
   test('typing on My requests goes back to the catalog with results', async () => {
@@ -535,5 +535,137 @@ describe('phone width', () => {
     expect(document.querySelector('.slipbar')).toBeNull();
     userEvent.click(headerRequest());
     expect(await screen.findByRole('dialog', { name: 'Your request' })).toBeInTheDocument();
+  });
+});
+
+// Requested 2026-10-09 (user): alphabetical everywhere, expired items hidden entirely,
+// "Low stock" instead of "Only N left", every type tile shown, contact footer, new name.
+describe('ordering, expiry and wording', () => {
+  const texts = (els) => els.map((e) => e.textContent.replace(/\s*\d[\d,]*\s*$/, '').trim());
+  const isSorted = (list) => list.every((x, i) => i === 0 || list[i - 1].localeCompare(x, 'en', { sensitivity: 'base' }) <= 0);
+
+  const MORE = [
+    ...SUPPLIES,
+    supply(40, { Name: 'Zinc tape', General: 'medical tape', Quantity: '9' }),
+    supply(41, { Name: 'abdominal pad', General: 'abdominal pad', Quantity: '9' }),
+    supply(42, { Name: 'Bandage roll', General: 'bandage roll', Quantity: '9' }),
+    supply(43, { Name: 'Saline flush', General: 'saline flush syringe', Subcategory: 'IV Supplies', 'Date of Expiration': '2020-02-01', Quantity: '4', 'Lot Number': 'OLD' }),
+    supply(44, { Name: 'Saline flush', General: 'saline flush syringe', Subcategory: 'IV Supplies', 'Date of Expiration': '2029-02-01', Quantity: '6', 'Lot Number': 'NEW' }),
+  ];
+  beforeEach(() => { handlers.supplies = () => response(200, MORE); });
+
+  test('landing categories and the tree are alphabetical', async () => {
+    await renderAt('#/');
+    expect(isSorted(texts([...document.querySelectorAll('.landing h2 a')]))).toBe(true);
+    expect(isSorted(texts([...document.querySelectorAll('.tree a[href^="#/c/"]')]))).toBe(true);
+  });
+
+  test('type tiles, type sections and rows are alphabetical, and every tile is shown', async () => {
+    await renderAt('#/c/wound-care-and-bandages', /^Zinc tape$/);
+    const tiles = [...document.querySelectorAll('ul.tiles a.tile .tile__name')];
+    expect(isSorted(texts(tiles))).toBe(true);
+    expect(screen.queryByRole('button', { name: /Show all .* types/ })).not.toBeInTheDocument();
+    expect(isSorted(texts([...document.querySelectorAll('section.type h2')]))).toBe(true);
+    for (const table of document.querySelectorAll('table.spec')) {
+      expect(isSorted([...table.querySelectorAll('tr.item-row .item-row__name')].map((b) => b.textContent))).toBe(true);
+    }
+  });
+
+  test('search results are alphabetical', async () => {
+    await renderAt('#/');
+    fireEvent.change(screen.getByLabelText('Search supplies'), { target: { value: 'a' } });
+    await screen.findByRole('heading', { level: 1, name: 'Results for “a”' });
+    for (const table of document.querySelectorAll('table.spec')) {
+      expect(isSorted([...table.querySelectorAll('tr.item-row .item-row__name')].map((b) => b.textContent))).toBe(true);
+    }
+  });
+
+  test('expired items are absent everywhere: category, search, landing counts, drawer', async () => {
+    await renderAt('#/c/iv-supplies', /^Saline flush$/);
+    expect(screen.queryByRole('button', { name: /^Old saline bag$/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/expired/i)).not.toBeInTheDocument();
+    // the multi-lot product only offers its unexpired lot
+    const row = rowFor('Saline flush');
+    expect(within(row).getByText('6 in stock')).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: /lots/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Search supplies'), { target: { value: 'saline' } });
+    await screen.findByRole('heading', { level: 1, name: 'Results for “saline”' });
+    expect(screen.queryByRole('button', { name: /^Old saline bag$/ })).not.toBeInTheDocument();
+    go('#/item/4'); // deep link to an expired row
+    expect(await screen.findByText(/isn’t in the list anymore/)).toBeInTheDocument();
+  });
+
+  test('a category whose items are all expired is not listed', async () => {
+    handlers.supplies = () => response(200, [...SUPPLIES, supply(50, { Name: 'Old mask', Subcategory: 'Masks & Face Shields', 'Date of Expiration': '2019-01-01' })]);
+    await renderAt('#/');
+    expect(document.querySelector('a[href="#/c/masks-and-face-shields"]')).toBeNull();
+  });
+
+  test('low stock says "Low stock", never "Only N left"', async () => {
+    await renderAt('#/c/wound-care-and-bandages', /^Gauze pads 4x4$/);
+    expect(within(rowFor('Gauze pads 4x4')).getByText('Low stock')).toBeInTheDocument();
+    expect(screen.queryByText(/Only \d+ left/)).not.toBeInTheDocument();
+  });
+
+  test('footer shows the contact email instead of data-gap notes; new site name', async () => {
+    await renderAt('#/');
+    const link = within(screen.getByRole('contentinfo')).getByRole('link', { name: /contact@b4pglobal\.org/ });
+    expect(link).toHaveAttribute('href', 'mailto:contact@b4pglobal.org');
+    expect(screen.queryByText(/unlabelled/)).not.toBeInTheDocument();
+    expect(document.title).toMatch(/External Supply Request Dashboard/);
+  });
+});
+
+describe('round 3: progressive rows, titles', () => {
+  const many = Array.from({ length: 150 }, (_, i) => supply(100 + i, {
+    Name: `Pad ${String(i).padStart(3, '0')}`, General: 'gauze pad', Quantity: '5',
+  }));
+
+  test('a big category renders the first rows at once and the rest soon after', async () => {
+    handlers.supplies = () => response(200, many);
+    at('#/c/wound-care-and-bandages');
+    render(<App />);
+    await screen.findByRole('button', { name: /^Pad 000$/ });
+    const first = document.querySelectorAll('tr.item-row').length;
+    expect(first).toBeGreaterThan(0);
+    expect(first).toBeLessThanOrEqual(150);
+    await waitFor(() => expect(document.querySelectorAll('tr.item-row')).toHaveLength(150), { timeout: 4000 });
+    expect(screen.getByRole('button', { name: /^Pad 149$/ })).toBeInTheDocument();
+  });
+
+  test('a deep link to a type renders all of its rows immediately', async () => {
+    handlers.supplies = () => response(200, many);
+    at('#/c/wound-care-and-bandages');
+    const { unmount } = render(<App />);
+    await screen.findByRole('button', { name: /^Pad 000$/ });
+    const typeHref = document.querySelector('a.tile').getAttribute('href');
+    unmount();
+    at(typeHref);
+    render(<App />);
+    await screen.findByRole('button', { name: /^Pad 000$/ });
+    expect(document.querySelectorAll('tr.item-row')).toHaveLength(150);
+  });
+
+  test('page titles carry the site name', async () => {
+    await renderAt('#/c/gloves', /^Nitrile gloves$/);
+    expect(document.title).toBe('Gloves | External Supply Request Dashboard');
+    go('#/requests');
+    await screen.findByRole('heading', { level: 1, name: 'My requests' });
+    expect(document.title).toBe('My requests | External Supply Request Dashboard');
+  });
+
+  test('matching-type tiles in search name their category', async () => {
+    await renderAt('#/');
+    fireEvent.change(screen.getByLabelText('Search supplies'), { target: { value: 'glove' } });
+    await screen.findByRole('heading', { level: 1, name: 'Results for “glove”' });
+    const tile = document.querySelector('a.tile');
+    expect(tile.querySelector('.tile__cat')).toHaveTextContent(/^in Gloves$/);
+    expect(tile.querySelector('.tile__count').textContent).not.toMatch(/in /);
+  });
+
+  test('category-page tiles never show a category line', async () => {
+    await renderAt('#/c/gloves', /^Nitrile gloves$/);
+    expect(document.querySelectorAll('a.tile').length).toBeGreaterThan(0);
+    expect(document.querySelector('a.tile .tile__cat')).toBeNull();
   });
 });

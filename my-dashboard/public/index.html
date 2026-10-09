@@ -5,11 +5,23 @@
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0337a3" />
+    <!-- Manrope (SIL OFL 1.1, see /fonts/OFL.txt), self-hosted: one variable latin file, 300–700. -->
+    <link rel="preload" href="%PUBLIC_URL%/fonts/manrope-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+    <style>
+      @font-face {
+        font-family: 'Manrope';
+        font-style: normal;
+        font-weight: 300 700;
+        font-display: swap;
+        src: url('%PUBLIC_URL%/fonts/manrope-latin-var.woff2') format('woff2');
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+      }
+    </style>
     <meta
       name="description"
       content="Partner clinics can browse donated medical supplies and request them from Blueprints for Pangaea."
     />
-    <meta property="og:title" content="B4P Request System" />
+    <meta property="og:title" content="External Supply Request Dashboard" />
     <meta property="og:site_name" content="Blueprints for Pangaea" />
     <meta property="og:description" content="Request supplies from the Blueprints for Pangaea inventory." />
     <meta property="og:image" content="https://b4p-request-system.vercel.app/og-image.png" />
@@ -17,7 +29,7 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <title>Request supplies | B4P Request System</title>
+    <title>External Supply Request Dashboard</title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

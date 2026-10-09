@@ -7,13 +7,13 @@ import { ProductIcon, ProductIconSprite } from './ProductIcon';
 const CASES = [
   ['syringe', 'syringe', 'Syringes'],
   ['10ml syringe', 'syringe', 'Syringes'],
-  ['syringe with blunt fill needle', 'syringe', 'Syringes with needles'],
-  ['oral / enteral syringe', 'syringe', 'Oral & enteral syringes'],
-  ['saline flush syringe', 'syringe', 'Flush syringes'],
+  ['syringe with blunt fill needle', 'syringe-needle', 'Syringes with needles'],
+  ['oral / enteral syringe', 'oral-syringe', 'Oral & enteral syringes'],
+  ['saline flush syringe', 'flush-syringe', 'Flush syringes'],
   ['hypodermic safety needle', 'needle', 'Needles'],
-  ['spinal needle', 'needle', 'Spinal needles'],
+  ['spinal needle', 'spinal-needle', 'Spinal needles'],
   ['blood collection set / butterfly needle', 'butterfly', 'Blood collection sets'],
-  ['blood collection needle with holder', 'tube-holder', 'Blood collection needles'],
+  ['blood collection needle with holder', 'bc-needle', 'Blood collection needles'],
   ['vacutainer / blood collection tube holder', 'tube-holder', 'Tube holders'],
   ['blood collection tube', 'blood-tube', 'Blood collection tubes'],
   ['blood collection tubes', 'blood-tube', 'Blood collection tubes'],
@@ -27,7 +27,7 @@ const CASES = [
   ['gravity iv set', 'iv-set', 'IV administration sets'],
   ['4-way stopcock', 'stopcock', 'Stopcocks'],
   ['needleless connector', 'connector', 'Connectors & adapters'],
-  ['disinfecting caps for needleless connectors', 'connector', 'Disinfecting caps'],
+  ['disinfecting caps for needleless connectors', 'disinfecting-cap', 'Disinfecting caps'],
   ['catheter stabilization device', 'stabilizer', 'Catheter securement devices'],
   ['specimen container', 'specimen-cup', 'Specimen containers'],
   ['specimen transport bag', 'specimen-bag', 'Specimen & biohazard bags'],
@@ -56,7 +56,7 @@ const CASES = [
   ['shoe covers', 'shoe-cover', 'Shoe covers'],
   ['foley catheter', 'foley', 'Foley catheters'],
   ['urethral catheter', 'catheter', 'Urinary catheters'],
-  ['suction catheter', 'catheter', 'Suction catheters'],
+  ['suction catheter', 'suction-catheter', 'Suction catheters'],
   ['urinary drainage bag', 'urine-bag', 'Urinary drainage bags'],
   ['adult briefs', 'brief', 'Briefs & underwear'],
   ['underpads / chux', 'underpad', 'Underpads'],
@@ -67,7 +67,7 @@ const CASES = [
   ['oxygen mask with tubing', 'o2-mask', 'Oxygen masks'],
   ['nasal cannula', 'nasal-cannula', 'Nasal cannulas'],
   ['oral tracheal tube', 'et-tube', 'Endotracheal tubes'],
-  ['endotracheal tube introducer (bougie)', 'et-tube', 'Intubation stylets & bougies'],
+  ['endotracheal tube introducer (bougie)', 'stylet', 'Intubation stylets & bougies'],
   ['tracheostomy tube', 'trach', 'Tracheostomy tubes'],
   ['laryngeal mask airway', 'airway', 'Supraglottic airways'],
   ['manual resuscitator / bvm', 'bvm', 'Manual resuscitators'],
@@ -82,7 +82,7 @@ const CASES = [
   ['ostomy skin barrier', 'ostomy-barrier', 'Ostomy skin barriers'],
   ['urostomy pouch', 'ostomy-pouch', 'Ostomy pouches & supplies'],
   ['enteral feeding set', 'feeding-bag', 'Enteral feeding sets'],
-  ['gastrostomy feeding tube', 'catheter', 'Feeding & gastric tubes'],
+  ['gastrostomy feeding tube', 'feeding-tube', 'Feeding & gastric tubes'],
   ['emesis bag', 'emesis-bag', 'Emesis bags'],
   ['sterile bowl', 'bowl', 'Bowls & basins'],
   ['iv start kit', 'kit', 'IV start kits'],
@@ -119,6 +119,27 @@ describe('iconFor / typeLabelFor', () => {
       if (byLabel.has(label)) expect([label, icon]).toEqual([label, byLabel.get(label)]);
       byLabel.set(label, icon);
     }
+  });
+
+  test('tube- and syringe-family types each have their own drawing', () => {
+    const TUBE_FAMILY = [
+      'Blood collection tubes', 'Sample tubes', 'Urine tubes', 'Sample vials', 'Lab samples',
+      'Urinary catheters', 'Suction catheters', 'Feeding & gastric tubes', 'Surgical drains',
+      'External catheters', 'Foley catheters', 'Endotracheal tubes', 'Intubation stylets & bougies',
+      'Laryngoscopes', 'CO2 detectors', 'Tracheostomy tubes', 'Supraglottic airways',
+      'Extension sets', 'Suction tubing', 'Pressure monitoring sets', 'IV administration sets',
+      'IV catheters', 'Arterial catheter sets', 'Connectors & adapters', 'Closed system transfer devices',
+      'Disinfecting caps', 'Catheter securement devices', 'Airway tube holders', 'Tube holders',
+      'Blood collection needles', 'Blood collection sets', 'Needles', 'Spinal needles',
+      'Blunt needles & cannulas',
+      // Syringe family
+      'Syringes', 'Syringes with needles', 'Oral & enteral syringes', 'Insulin syringes',
+      'Catheter-tip syringes', 'Flush syringes', 'Arterial blood sampling kits', 'Atomization devices',
+    ];
+    const iconOf = new Map(RULES.map(([, label, icon]) => [label, icon]));
+    for (const label of TUBE_FAMILY) expect(iconOf.has(label)).toBe(true);
+    const icons = TUBE_FAMILY.map((l) => iconOf.get(l));
+    expect(new Set(icons).size).toBe(TUBE_FAMILY.length);
   });
 
   test('accepts raw sheet rows as well as normalized items', () => {

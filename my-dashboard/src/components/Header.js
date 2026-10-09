@@ -1,13 +1,14 @@
 import Icon from './Icons';
 import SearchBar from './SearchBar';
 
-export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, query, onQuery, total }) {
+export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, query, onQuery, total, siteName }) {
   return (
     <header className="header">
       <div className="header__inner">
         <a className="header__brand" href="#/" onClick={() => onQuery('')}>
           {/* Inlined into the CSS as a data: URI, so the page makes no image requests. */}
-          <span className="header__logo" role="img" aria-label="Blueprints for Pangaea, request supplies" />
+          <span className="header__logo" role="img" aria-label="Blueprints for Pangaea" />
+          <span className="header__name">{siteName}</span>
         </a>
         {onOpenCategories && (
           <button type="button" className="header__cats btn btn--quiet" onClick={onOpenCategories}>

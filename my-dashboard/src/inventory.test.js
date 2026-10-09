@@ -1,5 +1,6 @@
 import {
   allocateFefo,
+  matchingTypes,
   baseRequestName,
   suppliesLabel,
   formatMonth,
@@ -198,13 +199,16 @@ describe('availability', () => {
   test('badges: only the plan\'s badges, in order', () => {
     const labels = (over, hold = false) => badgesFor(normalizeItem(row(over), TODAY), hold).map((b) => b.label);
     expect(labels({})).toEqual([]);
-    expect(labels({ Quantity: '2' })).toEqual(['Only 2 left']);
+    expect(labels({ Quantity: '2' })).toEqual(['Low stock']);
     expect(labels({ Quantity: '3' })).toEqual([]); // "Low stock" only at 2 or fewer
     expect(labels({ Quantity: '0' })).toEqual([]);
     expect(labels({ Quantity: '1' }, true)).toEqual(['On hold']);
     expect(labels({ 'Date of Expiration': '2026-12-01' })).toEqual(['Expires soon']);
-    expect(labels({ 'Date of Expiration': '2020-01-01', Review: 'Yes' })).toEqual(['Expired', 'Needs HQ check']);
-    expect(labels({ 'Date of Expiration': '2020-01-01', Quantity: '1' })).toEqual(['Expired']); // no stock badge on expired (FE-09)
+    expect(labels({ Review: 'Yes' })).toEqual(['Needs HQ check']);
+    // expired items never reach the UI now, so there is no "Expired" badge
+    expect(labels({ 'Date of Expiration': '2020-01-01' })).not.toContain('Expired');
+    const kinds = badgesFor(normalizeItem(row({ Quantity: '1', 'Date of Expiration': '2026-12-01' }), TODAY), false).map((b) => b.kind);
+    expect(kinds).toEqual(['low', 'soon']);
   });
 
   test('stockLabel', () => {
@@ -246,25 +250,24 @@ describe('search, filters, sort', () => {
     expect(applyBaseFilters(items, { hideExpiring: true }).map((i) => i.id)).toEqual([2, 4, 6]);
   });
 
-  test('chip counts follow other filters and Other sorts last', () => {
-    expect(subcategoryCounts(items)).toEqual([
-      { name: 'Needles & Syringes', count: 2 },
-      { name: 'Gloves', count: 1 },
-      { name: 'Wound Care & Bandages', count: 1 },
-      { name: OTHER_SUBCATEGORY, count: 1 },
-    ]);
+  test('category counts are A-Z (no Other-last rule) and follow other filters', () => {
+    const counts = subcategoryCounts(items);
+    expect(counts.map((c) => c.name)).toEqual([...counts.map((c) => c.name)].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })));
+    expect(counts.find((c) => c.name === 'Needles & Syringes').count).toBe(2);
+    expect(counts.find((c) => c.name === OTHER_SUBCATEGORY).count).toBe(1);
     const { base, results } = filterAndSort(items, { query: 'syringe', subcategory: 'Gloves', sort: 'stock' });
     expect(base).toHaveLength(2);
     expect(results).toEqual([]);
   });
 
-  test('sort by stock puts unknown stock last; by name ignores case; by expiry blanks last', () => {
+  test('sorts: stock, name (default, case-insensitive), expiry', () => {
     expect(sortItems(items, 'stock').map((i) => i.id)).toEqual([6, 2, 3, 5, 4]);
     expect(sortItems(items, 'name').map((i) => i.name)).toEqual([
       'apron', 'BD 10ml Syringe Luer-Lok', 'Gauze 4x4', 'Nitrile gloves medium', 'Syringe 3ml',
     ]);
     expect(sortItems(items, 'expiry').map((i) => i.id)).toEqual([3, 2, 4, 6, 5]); // expired (5) last (FE-10)
-    expect(sortItems(items, 'bogus').map((i) => i.id)).toEqual([6, 2, 3, 5, 4]);
+    expect(sortItems(items, 'bogus').map((i) => i.id)).toEqual(sortItems(items, 'name').map((i) => i.id)); // unknown sort = name
+    expect(sortItems(items).map((i) => i.id)).toEqual([5, 2, 4, 3, 6]); // default is A-Z
   });
 
   test('sorting does not mutate the input', () => {
@@ -445,7 +448,7 @@ describe('products and FEFO allocation', () => {
 
   test('same name and maker (ignoring case and spacing) merge; another maker stays separate', () => {
     expect(products).toHaveLength(2);
-    expect(saline.lots.map((l) => l.id)).toEqual([11, 10, 13, 12]); // dated, then undated, then expired
+    expect(saline.lots.map((l) => l.id)).toEqual([11, 10, 13]); // A-Z by lot number; the expired lot is left out
   });
 
   test('stock counts usable lots only; first expiry is the next usable one', () => {
@@ -589,7 +592,8 @@ describe('FEFO: frontend example', () => {
   test('quantity, expiry and lot order', () => {
     expect(product.quantity).toBe(9);
     expect(product.expiry).toBe('2026-11-01');
-    expect(product.lots.map((l) => l.id)).toEqual([3, 2, 5, 4]);
+    expect(product.lots.map((l) => l.id)).not.toContain(4); // expired lot left out
+    expect(product.lots).toHaveLength(3);
   });
 
   test('allocate 8 and 12', () => {
@@ -664,4 +668,31 @@ describe('my requests: lot lines merge back into supplies', () => {
       expect(suppliesLabel(supplies, lots)).toBe(label);
     },
   );
+});
+
+describe('matchingTypes: word starts in the type label only', () => {
+  const catalog = [
+    { name: 'Needles & Syringes', types: [{ label: 'Syringes', slug: 's' }, { label: 'Spinal needles', slug: 'sn' }, { label: 'Tube holders', slug: 't' }] },
+    { name: 'Wound Care & Bandages', types: [{ label: 'Gauze sponges & pads', slug: 'g' }, { label: 'Adhesive bandages', slug: 'a' }] },
+  ];
+  const labels = (q) => matchingTypes(catalog, q).map((t) => t.label);
+
+  test.each([
+    ['syr', ['Syringes']],
+    ['SYRINGE', ['Syringes']],
+    ['a', ['Adhesive bandages']],          // not every label containing an "a"
+    ['needles', ['Spinal needles']],        // the category name does not count
+    ['gau pad', ['Gauze sponges & pads']],  // every term must start a word
+    ['ringes', []],                         // mid-word does not match
+    ['', []],
+    ['   ', []],
+  ])('%p -> %p', (q, expected) => {
+    expect(labels(q)).toEqual(expected);
+  });
+
+  test('results carry their category and are A-Z', () => {
+    const out = matchingTypes(catalog, 's');
+    expect(out.map((t) => t.label)).toEqual(['Gauze sponges & pads', 'Spinal needles', 'Syringes']);
+    expect(out.every((t) => t.category && t.category.name)).toBe(true);
+  });
 });

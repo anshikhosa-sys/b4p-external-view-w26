@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, getAvailability, getSupplies, submitRequest } from './api';
 import { iconFor, ProductIconSprite, typeLabelFor } from './catalogIcons';
 import CategoryPage from './components/CategoryPage';
@@ -17,7 +17,7 @@ import { EmptyState, ErrorState, SkeletonTable, WakingNotice } from './component
 import { closeTo, navigate, useDebounced, useHashRoute, useMediaQuery } from './hooks';
 import {
   allocateFefo, applyAvailability, applyBaseFilters, buildCatalog, formatDateTime, groupByType, groupProducts,
-  matchingTypes, normalizeInventory, OTHER_SUBCATEGORY, unlabelledCount,
+  matchingTypes, normalizeInventory,
 } from './inventory';
 import { clearInventoryCache, readInventoryCache, writeInventoryCache } from './inventoryCache';
 import useCart, { MAX_LINES } from './useCart';
@@ -25,6 +25,10 @@ import useOrg from './useOrg';
 import './styles.css';
 
 const DEFAULT_FILTERS = { inStockOnly: false, hideExpiring: false };
+const SITE_NAME = 'External Supply Request Dashboard';
+const CONTACT_EMAIL = /^[^@\s<>"]+@[^@\s<>"]+\.[^@\s<>"]+$/.test(process.env.REACT_APP_CONTACT_EMAIL || '')
+  ? process.env.REACT_APP_CONTACT_EMAIL
+  : 'contact@b4pglobal.org';
 const OVERLAYS = ['item', 'slip'];
 const TITLES = { requests: 'My requests', checkout: 'Review your request', sent: 'Request submitted' };
 
@@ -112,7 +116,8 @@ export default function App() {
   const [org, setOrg] = useOrg();
 
   const [rawQuery, setRawQuery] = useState('');
-  const query = useDebounced(rawQuery.trim(), 120);
+  // Typing stays instant; results follow at lower priority.
+  const query = useDeferredValue(useDebounced(rawQuery.trim(), 100));
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [catsOpen, setCatsOpen] = useState(false);
   const [slipNotice, setSlipNotice] = useState(null);
@@ -193,11 +198,16 @@ export default function App() {
   }, [toast]);
 
   const { lines, setQuantity, restore, remove } = cart;
+  // Handlers stay stable across cart changes (read lines via a ref), so memoised
+  // rows don't all re-render when one quantity changes.
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
+  const quantities = useMemo(() => new Map(lines.map((l) => [l.id, l.quantity])), [lines]);
   // Removing a line (quantity 0 or Remove) offers an undo.
   const offerUndo = useCallback((id) => {
-    const index = lines.findIndex((l) => l.id === id);
+    const index = linesRef.current.findIndex((l) => l.id === id);
     if (index === -1) return;
-    const line = lines[index];
+    const line = linesRef.current[index];
     setToast({
       message: `Removed ${line.name} from your request.`,
       undo: () => {
@@ -205,7 +215,7 @@ export default function App() {
         setToast(null);
       },
     });
-  }, [lines, restore]);
+  }, [restore]);
 
   const onQuantity = useCallback((item, n) => {
     if (n <= 0) offerUndo(item.id);
@@ -227,8 +237,8 @@ export default function App() {
 
   useEffect(() => {
     const title = query && inCatalog ? `Results for ${query}`
-      : TITLES[base.view] || (category ? category.name : 'Request supplies');
-    document.title = `${title} | B4P Request System`;
+      : TITLES[base.view] || (category ? category.name : '');
+    document.title = title ? `${title} | ${SITE_NAME}` : SITE_NAME;
   }, [base.view, category, query, inCatalog]);
 
   const handleSubmit = async (orgValues, onSlow) => {
@@ -271,7 +281,7 @@ export default function App() {
   };
 
   const openItem = useCallback((id) => navigate(`/item/${id}`), []);
-  const tableProps = { quantityOf: cart.quantityOf, onQuantity, onOpenItem: openItem };
+  const tableProps = useMemo(() => ({ quantities, onQuantity, onOpenItem: openItem }), [quantities, onQuantity, openItem]);
 
   let main;
   if (base.view === 'requests') {
@@ -337,7 +347,6 @@ export default function App() {
           onClearFilters={clearFilters}
           typeSlug={base.type}
           tableProps={tableProps}
-          hiddenCount={category.name === OTHER_SUBCATEGORY ? unlabelledCount(items) : 0}
         />
       );
     } else if (base.view === 'category') {
@@ -354,7 +363,7 @@ export default function App() {
         </EmptyState>
       );
     } else {
-      page = <Landing catalog={catalog} total={catalogTotal} hiddenCount={unlabelledCount(items)} />;
+      page = <Landing catalog={catalog} total={catalogTotal} />;
     }
 
     main = (
@@ -408,10 +417,16 @@ export default function App() {
         query={rawQuery}
         onQuery={onQuery}
         total={catalogTotal}
+        siteName={SITE_NAME}
       />
       <main id="main" tabIndex={-1} className="main">
         {main}
       </main>
+      <footer className="footer">
+        <p>
+          Can’t find what you need? <a href={`mailto:${CONTACT_EMAIL}`}>Email us at {CONTACT_EMAIL}</a>
+        </p>
+      </footer>
 
       {catsOpen && !wide && (
         <Dialog onClose={() => setCatsOpen(false)} labelledBy="cats-title" variant="left" className="cats-drawer">

@@ -8,7 +8,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 const KB = 1024;
-const BUDGET = { js: 75 * KB, css: 15 * KB, sprite: 12 * KB };
+const BUDGET = { js: 75 * KB, css: 15 * KB, sprite: 12 * KB, font: 40 * KB };
 
 const root = path.resolve(__dirname, '..');
 const build = path.resolve(process.argv[2] || process.env.BUILD_PATH || path.join(root, 'build'));
@@ -54,15 +54,17 @@ const sprite = findSprite();
 if (sprite.length) check('Icon sprite', sprite, BUDGET.sprite);
 else rows.push({ name: 'Icon sprite', size: 0, budget: BUDGET.sprite, files: [], ok: true, note: 'not found yet (set SPRITE_PATH)' });
 
-// No web fonts and no images in the shell.
+// Fonts: at most 40 KB of self-hosted font files, and nothing from a font CDN or any other host.
 const html = fs.readFileSync(path.join(build, 'index.html'), 'utf8');
 const css = list(path.join(build, 'static', 'css'), /\.css$/).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
-const fontRefs = [
-  ...(html.match(/fonts\.(googleapis|gstatic)\.com[^"')\s]*/g) || []),
-  ...(css.match(/@font-face|fonts\.(googleapis|gstatic)\.com/g) || []),
+const external = [
+  ...(html.match(/https?:\/\/[^"')\s]*\.(woff2?|ttf|otf)|fonts\.(googleapis|gstatic)\.com[^"')\s]*/g) || []),
+  ...(css.match(/url\(\s*["']?https?:[^)]*\)|fonts\.(googleapis|gstatic)\.com/g) || []),
 ];
 const fontFiles = walk(build, /\.(woff2?|ttf|otf|eot)$/i);
-rows.push({ name: 'Web fonts', size: fontRefs.length + fontFiles.length, budget: 0, files: [...new Set(fontRefs)], ok: !fontRefs.length && !fontFiles.length, count: true });
+const fontBytes = fontFiles.reduce((n, f) => n + fs.statSync(f).size, 0); // woff2 is already compressed
+rows.push({ name: 'Self-hosted fonts', size: fontBytes, budget: BUDGET.font, files: fontFiles.map((f) => path.relative(root, f)), ok: fontBytes <= BUDGET.font, note: `${fontFiles.length} file(s), raw bytes` });
+rows.push({ name: 'External fonts', size: external.length, budget: 0, files: [...new Set(external)], ok: external.length === 0, count: true });
 
 let failed = false;
 for (const r of rows) {

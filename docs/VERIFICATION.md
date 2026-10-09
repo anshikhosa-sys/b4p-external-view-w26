@@ -27,14 +27,30 @@ inventory; no Google Sheet writes, no email sent). Details: `docs/QA_REPORT.md`,
   and email ("Pt. ID [removed]").
 - gzip, `Cache-Control`, ETag/304; `Image URL` no longer returned.
 
+## Round 3 (user feedback): name, polish, speed
+
+- Renamed **External Supply Request Dashboard**; logo sized to the header margin.
+- Everything A–Z (tree, landing across rows, types, products, lots, search);
+  all types shown (compact list on phones/tablets ≤ 899 px).
+- Expired stock hidden everywhere; single "Low stock" tag; tags are solid fills.
+- Footer: "Can't find what you need? Email us at contact@b4pglobal.org"
+  (`REACT_APP_CONTACT_EMAIL`).
+- Manrope (self-hosted variable woff2, 24 KB, OFL) — Light for text.
+- Distinct drawings for every tube and syringe type (105 drawings).
+- Smoothness: stepper click → paint 31–36 ms → 8–11 ms (4× CPU); search 204 → ~105–147 ms;
+  scrolling 0 long tasks, worst frame ≤ 23 ms at 4× CPU. `content-visibility` was tried and
+  removed (it caused a one-frame hitch). Judge smoothness on a production build, not the
+  dev server.
+- CSP note: the inline `@font-face` in `index.html` relies on `style-src 'unsafe-inline'`.
+
 ## Results (final run)
 
 | Check | Result |
 |---|---|
 | Backend tests (`.venv/bin/python -m pytest -q`) | 298 passed |
-| Frontend tests (`CI=true npx react-scripts test --watchAll=false`) | 367 passed, 2 skipped (live-data only) |
+| Frontend tests (`CI=true npx react-scripts test --watchAll=false`) | 400 passed, 2 skipped (live-data only) |
 | Production build (`CI=true npm run build`) | clean, zero warnings, no source maps |
-| Size budget (`npm run budget`) | JS 72.3/75 KB, CSS 12.4/15 KB, icons 5.5/12 KB, 0 fonts |
+| Size budget (`npm run budget`) | JS 73.6/75 KB, CSS 12.7/15 KB, icons 6.4/12 KB, 1 self-hosted font 24/40 KB, 0 external fonts |
 | First table row, return visit | ~70 ms (desktop), ~170 ms (phone, 4× CPU) |
 | First table row, first visit | ~170 ms on a warm API; ~3 s if Render is cold-starting |
 | Layout shift | 0.000 |
@@ -58,6 +74,6 @@ inventory; no Google Sheet writes, no email sent). Details: `docs/QA_REPORT.md`,
   inventory (HQ reviews every request).
 - Requests for rows with no sheet Name don't count toward holds (needs storing
   `sheet_row`; possible follow-up).
-- JS has ~3 KB of budget headroom.
+- JS has ~1.4 KB of budget headroom — the next feature needs trimming or a budget bump.
 - Data for HQ: 79 rows are used specimen tubes whose labels include patient IDs (masked
   in the app, but the photos and sheet still contain them); 54 rows have no name.
