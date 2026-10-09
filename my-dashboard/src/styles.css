@@ -370,7 +370,7 @@ button:disabled {
 .search {
   position: relative;
   flex: 1;
-  min-width: 200px;
+  min-width: 160px;
   max-width: 640px;
 }
 
@@ -478,7 +478,8 @@ button:disabled {
   align-items: start;
 }
 
-@media (min-width: 900px) {
+/* The category tree needs ≥1100px; below that it's a drawer, so tables keep their width. */
+@media (min-width: 1100px) {
   .shop {
     grid-template-columns: 240px minmax(0, 1fr);
   }
@@ -896,7 +897,7 @@ button:disabled {
 }
 
 .spec__exp {
-  width: 12%; /* "from Mar 2027" fits at 14px */
+  width: 12%; /* "Mar 2027"; "from Mar 2027" where there's room */
   white-space: nowrap;
 }
 
@@ -911,8 +912,33 @@ button:disabled {
 }
 
 .spec__qty {
-  /* Fits the stepper (two 44px buttons around the number); Add is 88px, right-aligned. */
-  width: 136px;
+  /* Measured: 12px cell padding + two 44px buttons + a 5.5ch number + borders. Add is 88px, right-aligned. */
+  width: 150px; /* 12px cell padding + 136px stepper + 2px */
+}
+
+.spec .stepper__input {
+  min-width: 5.5ch; /* "10000" in tabular figures */
+  padding: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* Narrow desktops: fixed minimums for the short columns (Supply gives way),
+   and drop "from" since the "N lots" button already says there's more than one. */
+@media (max-width: 1279px) {
+  .spec__exp {
+    width: 92px;
+  }
+
+  .spec__stock {
+    width: 64px;
+  }
+}
+
+@media (max-width: 1279px) {
+  .exp-from {
+    display: none;
+  }
 }
 
 .item-row__name {
@@ -992,6 +1018,7 @@ button:disabled {
 }
 
 .stepper__btn {
+  flex: none; /* never shrink below the 44px tap size */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1931,15 +1958,17 @@ button:disabled {
 
 /* ── Small screens ────────────────────────────────────────────────────── */
 
+@media (max-width: 1099px) {
+  .header__cats {
+    display: inline-flex;
+    padding: 0 12px;
+  }
+}
+
 @media (max-width: 899px) {
   .header__inner {
     flex-wrap: wrap;
     gap: 8px 12px;
-  }
-
-  .header__cats {
-    display: inline-flex;
-    padding: 0 12px;
   }
 
   .search {
@@ -2267,9 +2296,9 @@ button:disabled {
   grid-row: span 3;
 }
 
-/* Phones and tablets (no tree): type tiles become a compact two-column list,
-   so long categories don't push the tables far down. */
-@media (max-width: 899px) {
+/* Phones, tablets and narrow laptops (no tree): type tiles become a compact
+   two-column list, so long categories don't push the tables far down. */
+@media (max-width: 1099px) {
   .tiles {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0 12px;

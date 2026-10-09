@@ -45,7 +45,7 @@ const ProductRow = memo(function ProductRow({ p, group, quantity, onQuantity, on
         </td>
         <td className="spec__exp num" data-label="Expires" title={p.expiry ? formatExpiry(p.expiry) : undefined}>
           {/* Month only in the table; the lot breakdown and detail show the full date. */}
-          {!p.expiry ? '–' : `${many ? 'from ' : ''}${formatMonth(p.expiry)}`}
+          {!p.expiry ? '–' : <>{many && <span className="exp-from">from </span>}{formatMonth(p.expiry)}</>}
         </td>
         <td className="spec__stock num" data-label="In stock">
           <span className="visually-hidden">{stockLabel(p.quantity)}</span>

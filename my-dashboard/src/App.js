@@ -110,7 +110,7 @@ function useInventory() {
 
 export default function App() {
   const route = useHashRoute();
-  const wide = useMediaQuery('(min-width: 900px)');
+  const wide = useMediaQuery('(min-width: 1100px)'); // category tree shown
   const { inventory, slow, refreshing, holds, reload, reloadHolds } = useInventory();
   const cart = useCart();
   const [org, setOrg] = useOrg();

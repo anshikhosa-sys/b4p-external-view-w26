@@ -197,6 +197,43 @@ Toggles:
 
 Speed: first row cold 73 ms, warm 37 ms; search 105-112 ms; CLS 0; 0 images, 1 self-hosted font. Scroll at 1440x900, two runs: landing, biggest category and search "a" all have 0 long tasks and 0 frames over 33 ms. Worst frame 19-23 ms at 1x and 4x, p95 19 ms (18 ms before; within run-to-run noise). INP 24 ms (median 16 ms) at 1x and 4x.
 
+**Spec table re-balance** (month-only Expires, 136 px action column). Probed headless on Needles & Syringes and Misc Surgical:
+
+| Width | Supply / Maker / Lot / Expires / In stock / Qty (px) | Overflowing cells | Lot ellipsized (titled) | Name lines 1/2/3/4 |
+|---|---|---|---|---|
+| 1024 | 242 / 103 / 76 / 83 / 48 / 136 | **Expires 27, In stock 1** (FE-18) | 53 | 42/41/31/7 |
+| 1280 | 383 / 142 / 104 / 113 / 66 / 136 | 0 | 3 | 78/41/3/0 |
+| 1440 | 405 / 148 / 108 / 118 / 69 / 136 | 0 | 2 | 81/40/1/0 |
+| 1920 | same as 1440 | 0 | 2 | 81/40/1/0 |
+
+- Columns line up across every type table (one x-position per column).
+- Expires is month-only, with the full date in `title`.
+- Stepper is 124 px inside the 136 px column; Add is 88x44.
+- Page overflow is 0.
+- Stepper input text box is 28 px: "999" fits (26 px), "1000" (33 px) and "10000" (42 px) don't (FE-19).
+
+**FE-18 / FE-19 re-verify** (tree at ≥1100, action column 148 px). Both categories, 0 overflowing cells at every width:
+
+| Width | Supply / Maker / Lot / Exp / Stock / Qty (px) | Name lines 1/2/3/4 (needles) | Tree / Categories button | Header | Search box |
+|---|---|---|---|---|---|
+| 899 | (compact) | — | drawer | 113 px (2 rows) | 851 |
+| 900 | 326 / 128 / 94 / 92 / 64 / 148 | 63/45/13/1 | drawer | 65 px | 164 |
+| 1024 | 418 / 146 / 107 / 92 / 64 / 148 | 81/40/1/0 | drawer | 65 | — |
+| 1099 | 474 / 158 / 116 / 92 / 64 / 148 | 83/39/0/0 | drawer | 65 | 363 |
+| 1100 | 261 / 115 / 84 / 92 / 64 / 148 | 45/40/34/3 | tree | 65 | 526 |
+| 1279 | 394 / 141 / 104 / 92 / 64 / 148 | 80/41/1/0 | tree | 65 | 605 |
+| 1280 | 371 / 142 / 104 / 113 / 66 / 148 | 76/40/6/0 | tree | 65 | — |
+| 1440 / 1920 | 393 / 148 / 108 / 118 / 69 / 148 | 80/41/1/0 | tree | 65 | 462+ |
+
+- Columns line up across tables at every width, and page overflow is 0.
+- Stepper input is 48 px: 99 through 10000 all fit (42 px max in a 46 px box).
+- Landing cards are still equal height at 1440/1280/1100 (3 columns) and 1099/1000 (2 columns).
+- Title is one line at 900-1920 ("Supply Requests" below 1180).
+- Toggles all pass. Budget JS 73.9 / CSS 12.9 KB; Jest 409 passed / 2 skipped.
+- Notes:
+  - At 1100 the tree takes room, so Supply is 261 px and names reach 3-4 lines (37 rows on Needles & Syringes).
+  - At 900 the search box is 164 px wide.
+
 ## Browser pass (McMaster layout)
 
 Chrome against the local build and 1,137-row snapshot; 360px checks in an iframe.
@@ -330,6 +367,8 @@ Options: `WIDTH=360`, `CPU=4`, `SLOW_NET=1`, `SEARCH=a,b`, `VERBOSE=1` (layout-s
 | FE-15 | Low | frontend-engineer (from bug-hunter) | Category/type slugs could collide ("Gloves & Masks" vs "Gloves and Masks", non-ASCII names) | Fixed (`uniqueSlugs`), verified by Jest |
 | FE-16 | Low | frontend-engineer (from bug-hunter) | `productKey` "|" collision; cart lines whose product vanished were silently dropped from the POST | Fixed, verified by Jest (stale-tab submit shows an inline error, 0 POSTs) |
 | FE-17 | Low | frontend-engineer | Round 3: one 35-58 ms frame (41 ms on the final build) at 4x CPU near the top of the biggest category, likely `content-visibility: auto` sections rendering on entry (baseline worst 21 ms) | Fixed (content-visibility removed), verified: misc-surgical worst 19-23 ms at 4x in 5 runs |
+| FE-18 | Low-Med | frontend-engineer | At 900-~1100 px (1024 measured) Expires (83 px) overflowed on "from Mon YYYY" (needs 109 px; 27 of 92 cells), and In stock (48 px) overflowed once | Fixed, verified: tree moved to ≥1100; Expires 92 / In stock 64 px at ≤1279; 0 overflowing cells at 900/1024/1099/1100/1279/1280/1440/1920 |
+| FE-19 | Low-Med | frontend-engineer | Table stepper input was 34 px (28 px of text): quantities of 1000 or more (33-42 px) were clipped | Fixed, verified: input 48 px (46 px of text), "10000" (42 px) fits |
 | QA-09 | Low | email-engineer | `If-None-Match: *` returned 200 instead of 304 | Fixed, verified |
 | QA-08 | Low | email-engineer | README and the run instructions say `USE_SAMPLE_DATA=1 uvicorn main:app`, but `sample_inventory.json` is missing and `*.json` is gitignored, so `/api/supplies` fails on a fresh clone | Fixed, verified (repo `sample_inventory.json`, `SAMPLE_INVENTORY_PATH`) |
 
