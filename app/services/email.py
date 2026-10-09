@@ -1,4 +1,5 @@
 import logging
+from html import escape as _e
 import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -12,7 +13,17 @@ SMTP_PORT = 587
 
 def _item_key_suffix(item: dict) -> str:
     key = str(item.get("inventory_key", "")).strip()
-    return f" [Key: {key}]" if key else ""
+    return f" [Key: {_e(key)}]" if key else ""
+
+
+def _subject(text: str) -> str:
+    """Header-safe single line (no CR/LF injection)."""
+    return " ".join(str(text).split())
+
+
+def _item_li(item: dict) -> str:
+    return (f"<li><strong>{_e(str(item['item_name']))}</strong>{_item_key_suffix(item)} "
+            f"(Category: {_e(str(item['category']))}) — Qty: {_e(str(item['quantity']))}</li>")
 
 
 def _send(to: "str | list[str]", subject: str, html: str) -> None:
@@ -49,14 +60,10 @@ def send_org_confirmation(
     request_id: str,
 ) -> None:
     """Confirmation email to the requesting org after submission."""
-    items_html = "".join(
-        f"<li><strong>{item['item_name']}</strong>{_item_key_suffix(item)} "
-        f"(Category: {item['category']}) — Qty: {item['quantity']}</li>"
-        for item in items
-    )
+    items_html = "".join(_item_li(item) for item in items)
     html = f"""
-<p>Hi {org_name},</p>
-<p>We've received your supply request (<strong>{request_id}</strong>).
+<p>Hi {_e(org_name)},</p>
+<p>We've received your supply request (<strong>{_e(str(request_id))}</strong>).
 Here is a summary of what was submitted:</p>
 <ul>
 {items_html}
@@ -88,15 +95,11 @@ def send_hq_alert(
         logger.warning("HQ_EMAIL not set — skipping HQ alert.")
         return
 
-    items_html = "".join(
-        f"<li><strong>{item['item_name']}</strong>{_item_key_suffix(item)} "
-        f"(Category: {item['category']}) — Qty: {item['quantity']}</li>"
-        for item in items
-    )
+    items_html = "".join(_item_li(item) for item in items)
 
     warning_section = ""
     if review_flagged:
-        flagged_html = "".join(f"<li>{name}</li>" for name in review_flagged)
+        flagged_html = "".join(f"<li>{_e(str(name))}</li>" for name in review_flagged)
         warning_section = f"""
 <hr>
 <p><strong style="color:#c0392b;">&#9888; WARNING — Manual Review Required</strong><br>
@@ -109,9 +112,9 @@ The following items are flagged and must be manually verified before approval:</
     html = f"""
 <p><strong>New supply request received.</strong></p>
 <table cellpadding="4">
-  <tr><td><strong>Org Name:</strong></td><td>{org_name}</td></tr>
-  <tr><td><strong>Org Email:</strong></td><td>{org_email}</td></tr>
-  <tr><td><strong>Timestamp:</strong></td><td>{timestamp}</td></tr>
+  <tr><td><strong>Org Name:</strong></td><td>{_e(str(org_name))}</td></tr>
+  <tr><td><strong>Org Email:</strong></td><td>{_e(str(org_email))}</td></tr>
+  <tr><td><strong>Timestamp:</strong></td><td>{_e(str(timestamp))}</td></tr>
 </table>
 <p><strong>Items Requested:</strong></p>
 <ul>
@@ -122,7 +125,7 @@ The following items are flagged and must be manually verified before approval:</
     try:
         _send(
             to=hq,
-            subject=f"New supply request from {org_name}",
+            subject=_subject(f"New supply request from {org_name}"),
             html=html,
         )
     except Exception as exc:
@@ -136,15 +139,11 @@ def send_status_update(
     items: list[dict],
 ) -> None:
     """Status update email to the org when their request is Approved or Shipped."""
-    items_html = "".join(
-        f"<li><strong>{item['item_name']}</strong>{_item_key_suffix(item)} "
-        f"(Category: {item['category']}) — Qty: {item['quantity']}</li>"
-        for item in items
-    )
+    items_html = "".join(_item_li(item) for item in items)
     html = f"""
-<p>Hi {org_name},</p>
+<p>Hi {_e(org_name)},</p>
 <p>There is an update on your supply request. The following items are now marked as
-<strong>{status}</strong>:</p>
+<strong>{_e(str(status))}</strong>:</p>
 <ul>
 {items_html}
 </ul>
@@ -154,7 +153,7 @@ def send_status_update(
     try:
         _send(
             to=org_email,
-            subject=f"Update on your supply request — {status}",
+            subject=_subject(f"Update on your supply request — {status}"),
             html=html,
         )
     except Exception as exc:

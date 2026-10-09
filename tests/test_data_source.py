@@ -1,6 +1,8 @@
 import psycopg
 import pytest
 
+from conftest import HQ
+
 
 def test_sheet_mode_health(sheet_client):
     assert sheet_client.get("/health").json() == {"source": "sheet", "ok": True}
@@ -8,13 +10,13 @@ def test_sheet_mode_health(sheet_client):
 
 def test_sheet_mode_unchanged_lifecycle(sheet_client):
     inv = sheet_client.get("/api/supplies").json()
-    assert [r["_sheet_row"] for r in inv] == [2, 3]
+    assert [r["_sheet_row"] for r in inv] == [2, 3, 4]
     r = sheet_client.post("/requests", json={"org_name": "O", "org_email": "o@x.org",
                                              "items": [{"item_name": "Gauze", "quantity": 1}]})
     rid = r.json()["request_id"]
-    assert sheet_client.get("/requests", params={"email": "O@X.ORG"}).json()[0]["Request ID"] == rid
+    assert sheet_client.get("/requests", params={"email": " O@X.ORG "}).json()[0]["Request ID"] == rid
     av = {a["item_name"]: a for a in sheet_client.get("/inventory/availability").json()}
-    assert av["Gauze"]["availability_status"] == "Available"  # sample mode ignores requests (pre-existing)
+    assert av["Gauze"]["availability_status"] == "Available"  # 10 - 1 open = 9 left
     assert av["Syringe"]["availability_status"] == "Limited"
 
 
@@ -39,19 +41,24 @@ def test_db_supplies_shape(db_client):
 
 def test_db_request_lifecycle(db_client, no_email):
     inv = db_client.get("/api/supplies").json()
-    used = {r["Item Name"].strip().lower() for r in db_client.get("/requests").json()}
-    name = next(r["Name"] for r in inv if r["Name"] and r["Quantity"].isdigit() and int(r["Quantity"]) > 5
-                and r["Name"].strip().lower() not in used)  # availability matches by item name
+    used = {r["Item Name"].strip().lower() for r in db_client.get("/requests", headers=HQ).json()}
+    counts = {}
+    for r in inv:
+        counts[r["Name"].strip().lower()] = counts.get(r["Name"].strip().lower(), 0) + 1
+    # availability matches by item name: pick an unused, unique name with a small stock
+    pick = next(r for r in inv if r["Name"] and r["Quantity"].isdigit() and 1 <= int(r["Quantity"]) <= 5
+                and r["Name"].strip().lower() not in used and counts[r["Name"].strip().lower()] == 1)
+    name, stock = pick["Name"], int(pick["Quantity"])
     email = f"Lifecycle.{__import__('uuid').uuid4().hex[:8]}@Example.org"
     r = db_client.post("/requests", json={"org_name": "Lifecycle " + email, "org_email": email,
-                                          "items": [{"item_name": name, "category": "X", "quantity": 2}]})
+                                          "items": [{"item_name": name, "category": "X", "quantity": stock}]})
     assert r.status_code == 200 and r.json()["status"] == "Under Review"
     rid = r.json()["request_id"]
     assert rid.startswith("REQ-")
 
-    assert any(x["Request ID"] == rid for x in db_client.get("/requests").json())
+    assert any(x["Request ID"] == rid for x in db_client.get("/requests", headers=HQ).json())
     mine = db_client.get("/requests", params={"email": email.lower()}).json()
-    assert [x["Request ID"] for x in mine] == [rid] and mine[0]["Quantity Requested"] == "2"
+    assert [x["Request ID"] for x in mine] == [rid] and mine[0]["Quantity Requested"] == str(stock)
     assert db_client.get("/requests", params={"email": "nobody@x.org"}).json() == []
 
     def status_of(n):
@@ -60,16 +67,19 @@ def test_db_request_lifecycle(db_client, no_email):
     assert status_of(name) == "Requested"
     assert not no_email  # submission sends no email, as before
 
-    assert db_client.patch(f"/requests/{rid}/status", json={"status": "Approved"}).status_code == 200
+    def patch(i, s):
+        return db_client.patch(f"/requests/{i}/status", json={"status": s}, headers=HQ)
+
+    assert patch(rid, "Approved").status_code == 200
     assert db_client.get("/requests", params={"email": email}).json()[0]["Status"] == "Approved"
-    assert status_of(name) in ("Available", "Limited")  # Approved is neither pending nor shipped (unchanged logic)
+    assert status_of(name) == "Requested"  # Approved still holds the stock
 
-    assert db_client.patch(f"/requests/{rid}/status", json={"status": "Shipped"}).status_code == 200
-    assert status_of(name) == "Shipped"
-    assert len(no_email) == 2  # one status email per PATCH, same as before
+    assert patch(rid, "Shipped").status_code == 200
+    assert status_of(name) == "Limited"  # shipped stock is assumed deducted from inventory; no permanent brand
+    assert len(no_email) == 2  # one status email per real status change
 
-    assert db_client.patch("/requests/REQ-nope/status", json={"status": "Shipped"}).status_code == 404
-    assert db_client.patch(f"/requests/{rid}/status", json={"status": "Bogus"}).status_code == 422
+    assert patch("REQ-nope", "Shipped").status_code == 404
+    assert patch(rid, "Bogus").status_code == 422
 
 
 def test_db_review_flag(db_client):
@@ -79,7 +89,7 @@ def test_db_review_flag(db_client):
         pytest.skip("no 'Review needed' rows in test DB")
     rid = db_client.post("/requests", json={"org_name": "Flag Org", "org_email": "f@x.org",
                                             "items": [{"item_name": flagged, "quantity": 1}]}).json()["request_id"]
-    row = next(x for x in db_client.get("/requests").json() if x["Request ID"] == rid)
+    row = next(x for x in db_client.get("/requests", headers=HQ).json() if x["Request ID"] == rid)
     assert row["Review Flag"] == "TRUE"
 
 
@@ -100,7 +110,7 @@ def test_migration_script_idempotent(db_client, tmp_path):
     for _ in range(2):  # second run must be a no-op
         subprocess.run([sys.executable, "scripts/migrate_org_requests_to_db.py", str(f)], check=True,
                        env={**__import__("os").environ})
-    rows = [r for r in db_client.get("/requests").json() if r["Request ID"] == rid]
+    rows = [r for r in db_client.get("/requests", headers=HQ).json() if r["Request ID"] == rid]
     assert [r["Item Name"] for r in rows] == ["A", "B"]
     assert rows[0]["Status"] == "Shipped" and rows[0]["Review Flag"] == "TRUE"
     assert rows[0]["Timestamp"].startswith("2026-04-15T17:01:05")

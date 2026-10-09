@@ -1,6 +1,9 @@
+import hmac
 import json
 import os
 import random
+import re
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,7 +12,7 @@ from typing import Literal, Optional
 import gspread
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2.service_account import Credentials
 from pydantic import BaseModel, Field, field_validator
@@ -100,7 +103,44 @@ def _clean_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 @app.exception_handler(psycopg.Error)
 async def _db_error(_, exc: psycopg.Error):
+    # Never echo raw database text to clients. Input the database refuses (RAISE EXCEPTION,
+    # CHECK, too-long value, ...) is the caller's fault; anything else is an outage.
+    if isinstance(exc, (psycopg.errors.RaiseException, psycopg.errors.CheckViolation,
+                        psycopg.errors.DataError)):
+        return JSONResponse(status_code=400, content={"detail": "Request rejected."})
+    if isinstance(exc, psycopg.errors.IntegrityError):
+        return JSONResponse(status_code=409, content={"detail": "Request conflicts with existing data."})
     return JSONResponse(status_code=503, content={"detail": "Database unavailable."})
+
+
+def require_hq(x_hq_token: Optional[str] = Header(default=None)) -> None:
+    """HQ-only endpoints: send the shared secret (env HQ_API_TOKEN) in the X-HQ-Token header."""
+    expected = os.environ.get("HQ_API_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(status_code=403, detail="HQ access is disabled.")
+    if not hmac.compare_digest((x_hq_token or "").encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Invalid HQ token.")
+
+
+# Simple per-IP rate limit for anonymous writes (in memory, per process). To remove it,
+# delete this block and the `Depends(rate_limit_post)` on POST /requests.
+RATE_LIMIT = 10  # requests per IP per minute
+_hits: dict[str, list[float]] = {}
+
+
+def rate_limit_post(request: Request) -> None:
+    fwd = request.headers.get("x-forwarded-for", "")
+    ip = fwd.split(",")[-1].strip() or (request.client.host if request.client else "?")
+    now = time.monotonic()
+    recent = [t for t in _hits.get(ip, []) if now - t < 60]
+    if len(recent) >= RATE_LIMIT:
+        _hits[ip] = recent
+        raise HTTPException(status_code=429, detail="Too many requests. Try again in a minute.")
+    recent.append(now)
+    _hits[ip] = recent
+    if len(_hits) > 10000:  # keep memory bounded
+        for k in [k for k, v in _hits.items() if not v or now - v[-1] >= 60]:
+            del _hits[k]
 
 
 def get_inventory_records() -> list[dict]:
@@ -316,17 +356,36 @@ ORG_REQ_HEADERS = [
 ]
 
 
+MAX_ITEMS = 100
+EMAIL_RE = re.compile(r"^[^@\s<>\"]+@[^@\s<>\"]+\.[^@\s<>\"]+$")
+
+
 class OrgCartItemIn(BaseModel):
-    item_name: str = Field(min_length=1, max_length=200)
+    item_name: str = Field(min_length=1, max_length=500)
     category: str = Field(default="", max_length=200)
-    quantity: int = Field(ge=1, le=99999)
+    quantity: int = Field(ge=1, le=10000)
     sheet_row: Optional[int] = Field(default=None, ge=2, le=500000)
 
 
 class OrgRequestBody(BaseModel):
     org_name: str = Field(min_length=1, max_length=200)
     org_email: str = Field(min_length=1, max_length=254)
-    items: list[OrgCartItemIn] = Field(min_length=1)
+    items: list[OrgCartItemIn] = Field(min_length=1, max_length=MAX_ITEMS)
+
+    @field_validator("org_name", "org_email")
+    @classmethod
+    def strip_nonempty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("cannot be empty")
+        return v
+
+    @field_validator("org_email")
+    @classmethod
+    def valid_email(cls, v: str) -> str:
+        if not EMAIL_RE.match(v):
+            raise ValueError("invalid email address")
+        return v
 
 
 class StatusUpdateBody(BaseModel):
@@ -379,7 +438,7 @@ def _inventory_primary_key(record: dict) -> str:
 
 
 @app.post("/requests")
-def submit_org_request(body: OrgRequestBody):
+def submit_org_request(body: OrgRequestBody, _rl: None = Depends(rate_limit_post)):
     if db.enabled():
         inventory = get_inventory_records()
         request_id = db.create_request(body.org_name, body.org_email, [
@@ -420,16 +479,24 @@ def submit_org_request(body: OrgRequestBody):
     try:
         ws.append_rows(batch, value_input_option="USER_ENTERED")
     except gspread.exceptions.APIError as exc:
-        raise HTTPException(status_code=502, detail=f"Google Sheets error: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Google Sheets error.") from exc
 
     return {"request_id": request_id, "status": "Under Review"}
 
 
-@app.patch("/requests/{request_id}/status")
+@app.patch("/requests/{request_id}/status", dependencies=[Depends(require_hq)])
 async def update_org_request_status(request_id: str, body: StatusUpdateBody):
     if db.enabled():
         rows = [r for r in db.get_requests() if r["Request ID"].strip() == request_id]
-        if not rows or not db.set_request_status(request_id, body.status):
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"Request ID '{request_id}' not found.")
+        if all(r["Status"].strip() == body.status for r in rows):
+            return {"request_id": request_id, "status": body.status, "changed": False}
+        try:
+            found = db.set_request_status(request_id, body.status)
+        except (psycopg.errors.RaiseException, psycopg.errors.CheckViolation):
+            raise HTTPException(status_code=409, detail="That status change is not allowed.")
+        if not found:
             raise HTTPException(status_code=404, detail=f"Request ID '{request_id}' not found.")
         if rows[0]["Org Email"]:
             items = [
@@ -470,10 +537,12 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody):
     org_name = ""
     org_email = ""
     items: list[dict] = []
+    current_statuses: set[str] = set()
 
     for i, row in enumerate(all_rows[1:], start=2):
         if len(row) > id_col and row[id_col].strip() == request_id:
             matching_sheet_rows.append(i)
+            current_statuses.add(row[status_col].strip() if len(row) > status_col else "")
             if not org_name and len(row) > org_name_col:
                 org_name = row[org_name_col]
             if not org_email and len(row) > org_email_col:
@@ -487,6 +556,9 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody):
     if not matching_sheet_rows:
         raise HTTPException(status_code=404, detail=f"Request ID '{request_id}' not found.")
 
+    if current_statuses == {body.status}:
+        return {"request_id": request_id, "status": body.status, "changed": False}
+
     sheet_status_col = status_col + 1
     try:
         ws.batch_update([
@@ -494,7 +566,7 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody):
             for r in matching_sheet_rows
         ])
     except gspread.exceptions.APIError as exc:
-        raise HTTPException(status_code=502, detail=f"Google Sheets error: {exc}") from exc
+        raise HTTPException(status_code=502, detail="Google Sheets error.") from exc
 
     if org_email:
         email_svc.send_status_update(org_name, org_email, body.status, items)
@@ -512,7 +584,9 @@ async def inventory_availability():
             org_requests = db.get_requests()
         except Exception:
             pass
-    elif not _use_sample_data():
+    elif _use_sample_data():
+        org_requests = list(_sample_org_request_rows)
+    else:
         try:
             spreadsheet = _open_requests_spreadsheet()
             ws = _org_requests_worksheet(spreadsheet)
@@ -525,55 +599,80 @@ async def inventory_availability():
         except Exception:
             pass
 
+    # Availability = stock minus what open requests (Under Review / Approved) already ask for.
+    # Shipped requests are not counted: HQ is expected to have taken shipped stock out of the
+    # inventory quantity, so they no longer brand the item. Requests are matched by item name.
+    open_by_name: dict[str, int] = {}
+    for r in org_requests:
+        if r.get("Status", "").strip() in ("Under Review", "Approved"):
+            key = r.get("Item Name", "").strip().lower()
+            try:
+                open_by_name[key] = open_by_name.get(key, 0) + int(str(r.get("Quantity Requested", "0")).strip())
+            except ValueError:
+                open_by_name[key] = open_by_name.get(key, 0) + 1
+
+    def _qty(rec: dict) -> Optional[int]:
+        try:
+            return int(str(rec.get("Quantity") or rec.get("quantity") or "").strip().replace(",", ""))
+        except ValueError:
+            return None
+
+    stock_by_name: dict[str, int] = {}
+    for rec in inventory:
+        key = (rec.get("Name") or rec.get("name") or "").strip().lower()
+        stock_by_name[key] = stock_by_name.get(key, 0) + (_qty(rec) or 0)
+
     result = []
     for rec in inventory:
         item_name = (rec.get("Name") or rec.get("name") or "").strip()
         category = (rec.get("Category") or rec.get("category") or "").strip()
-        qty_raw = str(rec.get("Quantity") or rec.get("quantity") or "").strip()
         sheet_row = rec.get("_sheet_row")
-
-        try:
-            qty = int(qty_raw.replace(",", ""))
-        except (ValueError, AttributeError):
-            qty = None
-
-        is_limited = qty is None or qty <= 5 or qty_raw in ("N/A", "-", "")
+        qty = _qty(rec)
         needle = item_name.lower()
-        item_reqs = [r for r in org_requests if r.get("Item Name", "").strip().lower() == needle]
-        shipped = [r for r in item_reqs if r.get("Status", "").strip() == "Shipped"]
-        pending = [r for r in item_reqs if r.get("Status", "").strip() == "Under Review"]
+        open_qty = open_by_name.get(needle, 0)
 
-        if shipped:
-            availability_status, tags, requesting_org, request_id = "Shipped", ["Shipped"], None, None
-        elif pending:
-            # Org names stay in the sheet for HQ; don't expose them to other clinics.
-            availability_status, tags, requesting_org, request_id = "Requested", ["Requested"], None, None
-        elif is_limited:
-            availability_status, tags, requesting_org, request_id = "Limited", ["Low Stock"], None, None
+        if open_qty:
+            remaining = stock_by_name.get(needle, 0) - open_qty
         else:
-            availability_status, tags, requesting_org, request_id = "Available", ["Available"], None, None
+            remaining = qty
+        if open_qty and remaining <= 0:
+            availability_status, tags = "Requested", ["Requested"]
+        elif remaining is None or remaining <= 5:
+            availability_status, tags = "Limited", ["Low Stock"]
+        else:
+            availability_status, tags = "Available", ["Available"]
 
+        # Org names stay in the sheet for HQ; don't expose them to other clinics.
         result.append({
             "sheet_row": sheet_row, "item_name": item_name, "category": category,
             "availability_status": availability_status, "tags": tags,
-            "requesting_org": requesting_org, "request_id": request_id,
+            "requesting_org": None, "request_id": None,
         })
 
     return result
 
 
 @app.get("/requests")
-async def list_org_requests(email: Optional[str] = None):
+async def list_org_requests(email: Optional[str] = None, x_hq_token: Optional[str] = Header(default=None)):
+    """Org view: ?email=<exact address, case-insensitive> returns only that org's lines.
+
+    Without a non-empty email this is the HQ view of ALL requests, which needs the
+    X-HQ-Token header (disabled with 403 when HQ_API_TOKEN is not set).
+    """
+    wanted = (email or "").strip().lower()
+    if not wanted:
+        require_hq(x_hq_token)
+
+    def mine(rows: list[dict]) -> list[dict]:
+        if not wanted:
+            return rows
+        return [r for r in rows if r.get("Org Email", "").strip().lower() == wanted]
+
     if db.enabled():
-        rows = db.get_requests()
-        if email:
-            rows = [r for r in rows if r["Org Email"].strip().lower() == email.strip().lower()]
-        return rows
+        return mine(db.get_requests())
 
     if _use_sample_data():
-        if not email:
-            return list(_sample_org_request_rows)
-        return [r for r in _sample_org_request_rows if r.get("Org Email", "").strip().lower() == email.strip().lower()]
+        return mine(list(_sample_org_request_rows))
 
     spreadsheet = _open_requests_spreadsheet()
     ws = _org_requests_worksheet(spreadsheet)
@@ -583,13 +682,8 @@ async def list_org_requests(email: Optional[str] = None):
         return []
 
     header = all_rows[0]
-    result = []
-    for r in all_rows[1:]:
-        if not any(cell.strip() for cell in r):
-            continue
-        row_dict = {header[j]: (r[j] if j < len(r) else "") for j in range(len(header))}
-        if email and row_dict.get("Org Email", "").strip().lower() != email.strip().lower():
-            continue
-        result.append(row_dict)
-
-    return result
+    return mine([
+        {header[j]: (r[j] if j < len(r) else "") for j in range(len(header))}
+        for r in all_rows[1:]
+        if any(cell.strip() for cell in r)
+    ])

@@ -41,6 +41,22 @@ def no_email(monkeypatch):
     return sent
 
 
+HQ = {"X-HQ-Token": "test-hq-token"}
+
+
+@pytest.fixture(autouse=True)
+def hq_token_and_rate_limit(monkeypatch):
+    import main
+    monkeypatch.setenv("HQ_API_TOKEN", "test-hq-token")
+    main._hits.clear()
+
+
+@pytest.fixture(params=["sheet", "db"])
+def client(request):
+    """The same test body runs in sheet mode (sample inventory) and DB mode."""
+    return request.getfixturevalue(request.param + "_client")
+
+
 @pytest.fixture
 def db_client(monkeypatch):
     try:
@@ -64,6 +80,7 @@ def sheet_client(monkeypatch, tmp_path):
     sample.write_text(json.dumps([
         {"Name": "Gauze", "Category": "Wound Care", "Quantity": "10", "Review": ""},
         {"Name": "Syringe", "Category": "Misc", "Quantity": "3", "Review": "Review needed"},
+        {"Name": "Bandage", "Category": "Wound Care", "Quantity": "50", "Review": ""},
     ]))
     monkeypatch.setattr(main, "SAMPLE_PATH", sample)
     monkeypatch.setattr(main, "_sample_org_request_rows", [])
