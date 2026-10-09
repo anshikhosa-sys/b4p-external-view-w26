@@ -54,7 +54,7 @@ inventory; no Google Sheet writes, no email sent). Details: `docs/QA_REPORT.md`,
 | First table row, return visit | ~70 ms (desktop), ~170 ms (phone, 4× CPU) |
 | First table row, first visit | ~170 ms on a warm API; ~3 s if Render is cold-starting |
 | Layout shift | 0.000 |
-| Image / font / third-party requests | 0 / 0 / 0 |
+| Image / font / third-party requests | 0 / 1 (self-hosted Manrope) / 0 |
 | Browser matrix (Chrome, desktop + 360 px) | all pass, no console errors |
 | Security re-test (bug-hunter) | 12 fixed, 1 accepted risk, 0 open — safe to push |
 
