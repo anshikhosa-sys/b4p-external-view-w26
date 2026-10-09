@@ -2,8 +2,9 @@ import os
 import subprocess
 
 # Never send real email from tests: empty values win over .env (load_dotenv does not override).
-os.environ["GMAIL_USER"] = ""
-os.environ["GMAIL_APP_PASSWORD"] = ""
+for _var in ("RESEND_API_KEY", "BREVO_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
+             "EMAIL_FROM", "EMAIL_REPLY_TO", "HQ_EMAIL", "EMAIL_DAILY_LIMIT"):
+    os.environ[_var] = ""
 
 import psycopg
 import pytest
@@ -36,8 +37,14 @@ def no_email(monkeypatch):
     """Capture every outgoing email instead of sending it."""
     from app.services import email as email_svc
 
-    sent = []
-    monkeypatch.setattr(email_svc, "_send", lambda *a, **k: sent.append((a, k)))
+    email_svc.reset_limits()  # the caps are in memory and would leak between tests
+    sent = []  # (to, subject, html) per email
+
+    def fake(to, subject, html, text=None):
+        sent.append((to, subject, html))
+        return True
+
+    monkeypatch.setattr(email_svc, "_send", fake)
     return sent
 
 

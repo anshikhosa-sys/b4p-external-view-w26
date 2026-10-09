@@ -47,7 +47,7 @@ def test_patch_requires_hq_token(client, monkeypatch, no_email):
     url = f"/requests/{rid}/status"
     assert client.patch(url, json={"status": "Shipped"}).status_code == 401
     assert client.patch(url, json={"status": "Shipped"}, headers={"X-HQ-Token": "x"}).status_code == 401
-    assert not no_email
+    assert len(no_email) == 1  # only the submit confirmation; rejected PATCHes sent nothing
     assert client.patch(url, json={"status": "Shipped"}, headers=HQ).status_code == 200
     monkeypatch.delenv("HQ_API_TOKEN")
     assert client.patch(url, json={"status": "Approved"}, headers=HQ).status_code == 403
@@ -58,16 +58,17 @@ def test_status_email_only_on_real_change(db_client, no_email):
     r, _ = _post(c, items=[{"item_name": _name(c), "quantity": 1}])
     url = f"/requests/{r.json()['request_id']}/status"
     assert c.patch(url, json={"status": "Approved"}, headers=HQ).status_code == 200
-    assert len(no_email) == 1
+    assert len(no_email) == 2  # submit confirmation + status email
     for _ in range(3):
         assert c.patch(url, json={"status": "Approved"}, headers=HQ).json()["changed"] is False
-    assert len(no_email) == 1
+    assert len(no_email) == 2
 
 
-def test_email_html_is_escaped_and_subject_single_line():
+def test_email_html_is_escaped_and_subject_single_line(monkeypatch):
     from app.services import email as e
+    monkeypatch.setenv("HQ_EMAIL", "hq@example.org")
     sent = []
-    e._send = lambda to, subject, html, *a, **k: sent.append((subject, html))
+    monkeypatch.setattr(e, "_send", lambda to, subject, html, text=None: sent.append((subject, html)))
     evil = '<a href="https://evil.test">x</a>'
     items = [{"item_name": evil, "category": "<img src=x>", "quantity": "<b>1</b>", "inventory_key": "<i>k</i>"}]
     e.send_status_update("<b>HQ</b>", "v@x.org", "<script>", items)

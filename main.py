@@ -12,7 +12,7 @@ from typing import Literal, Optional
 import gspread
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2.service_account import Credentials
 from pydantic import BaseModel, Field, field_validator
@@ -271,8 +271,8 @@ def _snapshot_row(inventory: list[dict], sheet_row: int) -> Optional[dict]:
 @app.get("/health")
 def health():
     if db.enabled():
-        return {"source": "postgres", "ok": db.ping()}
-    return {"source": "sheet", "ok": True}
+        return {"source": "postgres", "ok": db.ping(), "email": email_svc.provider_name()}
+    return {"source": "sheet", "ok": True, "email": email_svc.provider_name()}
 
 
 @app.get("/api/supplies")
@@ -437,15 +437,30 @@ def _inventory_primary_key(record: dict) -> str:
     return ""
 
 
+def _queue_submit_emails(tasks: BackgroundTasks, body: OrgRequestBody, request_id: str,
+                         flagged: list[str]) -> None:
+    """Confirmation + HQ alert run after the response, so a slow provider never blocks users."""
+    if os.environ.get("EMAIL_ON_SUBMIT", "true").strip().lower() in ("false", "0", "no", "off"):
+        return
+    items = [{"item_name": i.item_name, "category": i.category, "quantity": i.quantity}
+             for i in body.items]
+    tasks.add_task(email_svc.send_org_confirmation, body.org_name, body.org_email, items, request_id)
+    tasks.add_task(email_svc.send_hq_alert, body.org_name, body.org_email, items, request_id, flagged)
+
+
 @app.post("/requests")
-def submit_org_request(body: OrgRequestBody, _rl: None = Depends(rate_limit_post)):
+def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks,
+                       _rl: None = Depends(rate_limit_post)):
     if db.enabled():
         inventory = get_inventory_records()
+        flags = [_review_flag(inventory, i.item_name) for i in body.items]
         request_id = db.create_request(body.org_name, body.org_email, [
             {"item_name": i.item_name, "category": i.category, "quantity": i.quantity,
-             "review_flag": _review_flag(inventory, i.item_name)}
-            for i in body.items
+             "review_flag": flag}
+            for i, flag in zip(body.items, flags)
         ])
+        _queue_submit_emails(tasks, body, request_id,
+                             [i.item_name for i, flag in zip(body.items, flags) if flag])
         return {"request_id": request_id, "status": "Under Review"}
 
     if _use_sample_data():
@@ -458,6 +473,7 @@ def submit_org_request(body: OrgRequestBody, _rl: None = Depends(rate_limit_post
                 "Category": item.category, "Quantity Requested": str(item.quantity),
                 "Status": "Under Review", "Timestamp": ts, "Review Flag": "FALSE",
             })
+        _queue_submit_emails(tasks, body, request_id, [])
         return {"request_id": request_id, "status": "Under Review", "message": "USE_SAMPLE_DATA mode."}
 
     request_id = _make_request_id()
@@ -481,11 +497,12 @@ def submit_org_request(body: OrgRequestBody, _rl: None = Depends(rate_limit_post
     except gspread.exceptions.APIError as exc:
         raise HTTPException(status_code=502, detail="Google Sheets error.") from exc
 
+    _queue_submit_emails(tasks, body, request_id, [])
     return {"request_id": request_id, "status": "Under Review"}
 
 
 @app.patch("/requests/{request_id}/status", dependencies=[Depends(require_hq)])
-async def update_org_request_status(request_id: str, body: StatusUpdateBody):
+async def update_org_request_status(request_id: str, body: StatusUpdateBody, tasks: BackgroundTasks):
     if db.enabled():
         rows = [r for r in db.get_requests() if r["Request ID"].strip() == request_id]
         if not rows:
@@ -503,7 +520,7 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody):
                 {"item_name": r["Item Name"], "category": r["Category"], "quantity": r["Quantity Requested"]}
                 for r in rows
             ]
-            email_svc.send_status_update(rows[0]["Org Name"], rows[0]["Org Email"], body.status, items)
+            tasks.add_task(email_svc.send_status_update, rows[0]["Org Name"], rows[0]["Org Email"], body.status, items)
         return {"request_id": request_id, "status": body.status}
 
     if _use_sample_data():
@@ -569,7 +586,7 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody):
         raise HTTPException(status_code=502, detail="Google Sheets error.") from exc
 
     if org_email:
-        email_svc.send_status_update(org_name, org_email, body.status, items)
+        tasks.add_task(email_svc.send_status_update, org_name, org_email, body.status, items)
 
     return {"request_id": request_id, "status": body.status}
 

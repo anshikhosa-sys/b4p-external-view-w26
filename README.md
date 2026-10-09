@@ -17,7 +17,7 @@ With `DATABASE_URL` set:
 - `POST /requests`, `PATCH /requests/{id}/status` and `GET /requests[?email=]` use
   `create_request()`, `set_request_status()` and the `dash_requests` view.
 - Internal clinic requests (`/api/requests`) are not affected and still use the sheet.
-- `GET /health` returns `{"source": "postgres"|"sheet", "ok": true|false}`.
+- `GET /health` returns `{"source": "postgres"|"sheet", "ok": true|false, "email": "brevo"|"resend"|"smtp"|null}`.
 
 All database access lives in `app/db.py` (views and functions are defined by the
 database's dashboard contract; do not query other tables from here).
@@ -47,3 +47,10 @@ To import an old `org_requests.json` into the database (safe to re-run):
     pytest                                  # DB tests skip if the test DB is missing
 
 Tests never send email.
+
+## Email
+
+Submitting a request emails a confirmation to the org and an alert to HQ; status changes email the org.
+Sent in the background via Brevo or Resend (HTTP; Render blocks SMTP). Env vars: `BREVO_API_KEY` or
+`RESEND_API_KEY`, `EMAIL_FROM`, `HQ_EMAIL`, optional `EMAIL_REPLY_TO`, `EMAIL_ON_SUBMIT`. Setup, testing
+and troubleshooting: [docs/EMAIL.md](docs/EMAIL.md). Template in `.env.example`.

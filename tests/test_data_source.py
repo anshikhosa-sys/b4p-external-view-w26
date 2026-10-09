@@ -5,7 +5,7 @@ from conftest import HQ
 
 
 def test_sheet_mode_health(sheet_client):
-    assert sheet_client.get("/health").json() == {"source": "sheet", "ok": True}
+    assert sheet_client.get("/health").json() == {"source": "sheet", "ok": True, "email": None}
 
 
 def test_sheet_mode_unchanged_lifecycle(sheet_client):
@@ -21,7 +21,7 @@ def test_sheet_mode_unchanged_lifecycle(sheet_client):
 
 
 def test_db_health(db_client):
-    assert db_client.get("/health").json() == {"source": "postgres", "ok": True}
+    assert db_client.get("/health").json() == {"source": "postgres", "ok": True, "email": None}
 
 
 def test_db_health_down(monkeypatch):
@@ -29,7 +29,7 @@ def test_db_health_down(monkeypatch):
     from fastapi.testclient import TestClient
     monkeypatch.setenv("DATABASE_URL", "postgresql://127.0.0.1:1/nope")
     c = TestClient(main.app)
-    assert c.get("/health").json() == {"source": "postgres", "ok": False}
+    assert c.get("/health").json() == {"source": "postgres", "ok": False, "email": None}
     assert c.get("/api/supplies").status_code == 503
 
 
@@ -65,7 +65,7 @@ def test_db_request_lifecycle(db_client, no_email):
         return next(a for a in db_client.get("/inventory/availability").json() if a["item_name"] == n)["availability_status"]
 
     assert status_of(name) == "Requested"
-    assert not no_email  # submission sends no email, as before
+    assert len(no_email) == 1  # submission sends the org confirmation (HQ_EMAIL is unset in tests)
 
     def patch(i, s):
         return db_client.patch(f"/requests/{i}/status", json={"status": s}, headers=HQ)
@@ -76,7 +76,7 @@ def test_db_request_lifecycle(db_client, no_email):
 
     assert patch(rid, "Shipped").status_code == 200
     assert status_of(name) == "Limited"  # shipped stock is assumed deducted from inventory; no permanent brand
-    assert len(no_email) == 2  # one status email per real status change
+    assert len(no_email) == 3  # confirmation + one status email per real status change
 
     assert patch("REQ-nope", "Shipped").status_code == 404
     assert patch(rid, "Bogus").status_code == 422
