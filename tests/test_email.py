@@ -74,12 +74,12 @@ def test_confirmations_capped_per_address_but_request_and_alert_still_happen(she
     assert any(m[0] == "other@example.org" for m in no_email)  # other addresses unaffected
 
 
-def test_global_daily_cap_blocks_all_mail_but_requests_succeed(sheet_client, no_email, monkeypatch, caplog):
+def test_submit_mail_stays_under_its_share_of_the_daily_cap(sheet_client, no_email, monkeypatch, caplog):
     monkeypatch.setenv("HQ_EMAIL", "hq@example.org")
-    monkeypatch.setenv("EMAIL_DAILY_LIMIT", "3")
-    for i in range(3):
+    monkeypatch.setenv("EMAIL_DAILY_LIMIT", "10")  # submit mail (confirmation + alert) stops at 8
+    for i in range(10):
         assert _submit(sheet_client, email=f"o{i}@example.org").status_code == 200
-    assert len(no_email) == 3  # 6 wanted (confirmation + alert each), capped at 3
+    assert len(no_email) == 8  # the other 2 slots stay free for status mail
     assert "EMAIL_DAILY_LIMIT" in caplog.text
 
 
@@ -185,3 +185,143 @@ def test_send_never_raises_and_does_not_log_secrets(real_send, monkeypatch, capl
 
     monkeypatch.setattr(e.urllib.request, "urlopen", timeout)
     assert e.send("a@example.org", "Hi", "<p>Hi</p>") is False
+
+
+def test_address_aliases_share_one_confirmation_budget(sheet_client, no_email):
+    for a in ["victim@gmail.com", "v.ictim+1@gmail.com", "VICTIM@googlemail.com", "victim+x@gmail.com."]:
+        assert _submit(sheet_client, email=a).status_code == 200
+    assert len(no_email) == 3
+
+
+def test_confirmation_has_fixed_subject_and_no_links(sheet_client, no_email):
+    r = sheet_client.post("/requests", json={
+        "org_name": "Verify at https://evil.test/login", "org_email": "v@example.org",
+        "items": [{"item_name": "see www.evil.test", "quantity": 1}]})
+    assert r.status_code == 200
+    (to, subject, html), = no_email
+    assert "evil.test" not in subject + html and "ignore this email" in html
+
+
+# --- patient identifiers (specimen-tube labels in the inventory) -----------------
+
+PHI_NAME = "UR IMMUNO, UPEP FROZEN Pt. ID 0000000006-1 ST15"
+
+
+def test_redact_phi_variants():
+    import main
+    assert main._redact_phi(PHI_NAME) == "UR IMMUNO, UPEP FROZEN Pt. ID [removed] ST15"
+    assert main._redact_phi("pt id 0000000007-1") == "Pt. ID [removed]"
+    assert main._redact_phi("PT.ID  A1") == "Pt. ID [removed]"
+    assert main._redact_phi("Gauze pads") == "Gauze pads"
+
+
+def test_inventory_endpoints_never_return_patient_ids(sheet_client, monkeypatch):
+    import main
+    rec = {"Name": PHI_NAME, "Category": "Lab", "Quantity": "9", "Review": "",
+           "Notes": "label Pt. ID 0000000008-1", "_sheet_row": 2}
+    monkeypatch.setattr(main, "_load_inventory_records", lambda: [dict(rec)])
+    for url in ("/api/supplies", "/inventory/availability"):
+        body = sheet_client.get(url).text
+        assert "0000000001" not in body and "C000000002" not in body, url
+    assert "Pt. ID [removed]" in sheet_client.get("/api/supplies").text
+
+
+def test_submitted_item_name_is_redacted_in_storage_and_email(sheet_client, no_email, monkeypatch):
+    monkeypatch.setenv("HQ_EMAIL", "hq@example.org")
+    r = sheet_client.post("/requests", json={"org_name": "Lab", "org_email": "lab@example.org",
+                                             "items": [{"item_name": PHI_NAME, "quantity": 1}]})
+    assert r.status_code == 200
+    assert no_email and all("0000000001" not in html for _, _, html in no_email)
+    rows = sheet_client.get("/requests", params={"email": "lab@example.org"}).json()
+    assert "0000000001" not in rows[0]["Item Name"]
+
+
+# --- performance: gzip, cache headers, ETag, no photos ---------------------------
+
+@pytest.fixture
+def big_inventory(sheet_client, monkeypatch):
+    import main
+    rows = [{"Name": f"Item {i}", "Category": "Cat", "Quantity": "20", "Review": "",
+             "Image URL": "https://example.test/photo", "_sheet_row": i + 2} for i in range(60)]
+    monkeypatch.setattr(main, "_load_inventory_records", lambda: [dict(r) for r in rows])
+    return sheet_client
+
+
+def test_large_responses_are_gzipped(big_inventory):
+    r = big_inventory.get("/api/supplies", headers={"Accept-Encoding": "gzip"})
+    assert r.headers["content-encoding"] == "gzip" and len(r.json()) == 60
+
+
+@pytest.mark.parametrize("url", ["/api/supplies", "/inventory/availability"])
+def test_public_endpoints_have_cache_header_and_etag(big_inventory, url):
+    r = big_inventory.get(url)
+    assert r.headers["cache-control"] == "public, max-age=60, stale-while-revalidate=300"
+    etag = r.headers["etag"]
+    assert etag.startswith('W/"')
+    again = big_inventory.get(url, headers={"If-None-Match": etag})
+    assert again.status_code == 304 and again.content == b"" and again.headers["etag"] == etag
+    assert big_inventory.get(url, headers={"If-None-Match": '"other", ' + etag}).status_code == 304
+    assert big_inventory.get(url, headers={"If-None-Match": 'W/"stale"'}).status_code == 200
+
+
+def test_etag_changes_when_data_changes(big_inventory, monkeypatch):
+    import main
+    first = big_inventory.get("/api/supplies").headers["etag"]
+    main._inventory_cache.clear()
+    monkeypatch.setattr(main, "_load_inventory_records", lambda: [{"Name": "Other", "_sheet_row": 2}])
+    assert big_inventory.get("/api/supplies").headers["etag"] != first
+
+
+def test_supplies_drop_image_url_but_keep_other_fields(big_inventory):
+    rows = big_inventory.get("/api/supplies").json()
+    assert all("Image URL" not in r for r in rows)
+    assert rows[0]["Name"] == "Item 0" and rows[0]["_sheet_row"] == 2
+
+
+def test_org_request_lookup_is_never_cached(sheet_client):
+    r = sheet_client.get("/requests", params={"email": "someone@example.org"})
+    assert r.headers["cache-control"] == "no-store"
+
+
+# --- lot suffix on requested item names -------------------------------------------
+
+def test_base_item_name_strips_one_trailing_lot_suffix():
+    import main
+    assert main._base_item_name("Gauze [Lot A1, Box 2, Pallet 3]") == "Gauze"
+    assert main._base_item_name("Gauze") == "Gauze"
+    assert main._base_item_name("BD 10ml Syringe [Lot 1234567, Box —, Pallet 1]") == "BD 10ml Syringe"  # em dash
+    assert main._base_item_name("Gauze [Lot A] [Lot B]") == "Gauze [Lot A]"  # only one suffix
+    assert main._base_item_name("Gauze [Lot A] extra") == "Gauze [Lot A] extra"
+
+
+def _status_of(client, name):
+    return next(a for a in client.get("/inventory/availability").json() if a["item_name"] == name)["availability_status"]
+
+
+def test_suffixed_request_holds_stock_like_a_plain_one(sheet_client, no_email):
+    import main
+    for suffix, expected in (("", "Requested"), (" [Lot L1, Box 2, Pallet 3]", "Requested")):
+        main._sample_org_request_rows.clear()
+        main._inventory_cache.clear()
+        assert _status_of(sheet_client, "Gauze") == "Available"  # 10 in stock
+        r = sheet_client.post("/requests", json={"org_name": "O", "org_email": f"o{len(suffix)}@example.org",
+                                                 "items": [{"item_name": "Gauze" + suffix, "quantity": 10}]})
+        assert r.status_code == 200
+        assert _status_of(sheet_client, "Gauze") == expected
+    main._sample_org_request_rows.clear()
+    sheet_client.post("/requests", json={"org_name": "O", "org_email": "p@example.org",
+                                         "items": [{"item_name": "Gauze [Lot L1, Box 2, Pallet 3]", "quantity": 6}]})
+    assert _status_of(sheet_client, "Gauze") == "Limited"  # 4 left
+
+
+def test_review_flag_matches_suffixed_name_and_full_name_is_kept(sheet_client, no_email, monkeypatch):
+    monkeypatch.setenv("HQ_EMAIL", "hq@example.org")
+    full = "Syringe [Lot L9, Box 1, Pallet 1]"  # Syringe is Review needed in the sample inventory
+    r = sheet_client.post("/requests", json={"org_name": "O", "org_email": "r@example.org",
+                                             "items": [{"item_name": full, "quantity": 1}]})
+    assert r.status_code == 200
+    rows = sheet_client.get("/requests", params={"email": "r@example.org"}).json()
+    assert rows[0]["Review Flag"] == "TRUE" and rows[0]["Item Name"] == full
+    alert = next(m for m in no_email if m[0] == "hq@example.org")
+    assert "Manual review required" in alert[2] and "Lot L9" in alert[2]
+    assert any("Lot L9" in m[2] for m in no_email if m[0] == "r@example.org")

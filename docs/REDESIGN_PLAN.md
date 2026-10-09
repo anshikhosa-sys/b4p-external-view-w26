@@ -100,8 +100,9 @@ Left-aligned everything; one column of reading text ≤ 70ch.
   auto-updates, quantity 0 removes, visible Remove.
 - Baymard: product-list design changes find-success by up to 400% → strong
   search, chips with counts, result count, clear-filters, in-stock toggle.
-- Dense SKUs scan faster as rows; since we have photos, default to a photo grid
-  with a **Grid / List toggle** (list = 56px thumbnail rows) remembered in localStorage.
+- Dense SKUs scan faster as rows: **list view is the default** (56px thumbnail
+  rows, plain-word columns "In stock", "Expires", "Box"), with a photo **grid
+  toggle**; choice remembered in localStorage. (The wireframe above shows the grid.)
 - Fonts load: `Inter:wght@400;500;600&family=Poppins:wght@600&display=swap`.
 
 ### Key decisions
@@ -143,3 +144,59 @@ No new runtime dependencies.
 - Templates live in one place; a CLI `python -m app.services.email test you@x.org`
   proves the configuration works.
 - Documented in `docs/EMAIL.md`.
+
+---
+
+## Direction change (2026-10-09, from the user): a modern McMaster-Carr
+
+"Make it a real shop … instead of the actual images put renderings or icons …
+the website very fast … like a modern version of McMaster-Carr."
+
+### What that means
+
+- **No product photos.** The Drive photos are poor quality (and some show
+  patient labels). Every product gets a **consistent line drawing** of its type
+  instead, McMaster style: one stroke weight, one grid, monochrome ink with a
+  brand-blue accent on hover/selected.
+- **Icons ship inside the app as one inline SVG sprite** (~60 drawings, target
+  ≤ 40 KB raw / ≤ 12 KB gzip), so the catalog makes **zero image requests**.
+  557 `General` values map to ~60 drawings by keyword rules, with a
+  per-subcategory fallback drawing (never a blank).
+- **Catalog structure like McMaster:**
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ [B4P]  [ Search 1,137 supplies…                         ]   My requests  [Request 3] │
+├───────────────┬──────────────────────────────────────────────────────────┤
+│ Needles &     │  Needles & Syringes                                       │
+│  Syringes 213 │  ┌─────┐ Syringes 54   ┌─────┐ Needles 31   ┌─────┐ Blood │
+│ IV Supplies   │  │ ✎   │               │ ✎   │              │ ✎   │ coll… │
+│ Wound care    │  └─────┘               └─────┘              └─────┘       │
+│ Gloves        │  ┌─────┐ Safety needles ┌─────┐ Spinal needles …           │
+│ Masks …       │                                                           │
+│ (sticky tree) │  ── Syringes ──────────────────────────────────────────── │
+│               │  [✎] Supply              Maker  Expires   In stock  Qty   │
+│               │       BD 5 mL Luer-Lok   BD     May 2031     406  [-1+][Add]│
+│               │       10 mL syringe      …                                │
+└───────────────┴──────────────────────────────────────────────────────────┘
+```
+
+  1. Left: sticky category tree (12 subcategories + counts). Mobile: a
+     "Categories" drawer.
+  2. Category page: a grid of **product-type tiles** (drawing + name + count),
+     like McMaster's presentation pages, then dense **spec tables per type**
+     (drawing once in the group header, not per row).
+  3. Search is instant and client-side, shows matching types first, then rows.
+  4. Request slip stays (it's the cart): header button with count + right
+     drawer; full review page; confirmation; My requests with status track.
+- **Look:** white page, near-black ink, thin hairline rules, brand blue
+  `#0337a3` for links/actions only, tight 14px table type, generous whitespace
+  around group headings. Modern, not retro: rounded 6px controls, clear focus.
+- **Speed budget** (checked by QA on every build):
+  - JS ≤ 75 KB gzip, CSS ≤ 15 KB gzip, icon sprite ≤ 12 KB gzip.
+  - **System font stack** (no Google Fonts request); tabular figures.
+  - API: gzip responses, `Cache-Control: public, max-age=60,
+    stale-while-revalidate=300` on inventory endpoints; frontend caches the
+    last inventory in `localStorage` and renders it instantly, then refreshes.
+  - No layout shift; first render < 1 s on a warm API (Render free-tier cold
+    start is outside our control — the cached copy hides it on repeat visits).

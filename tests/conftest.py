@@ -10,7 +10,8 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-TEST_DB = os.environ.get("TEST_DATABASE_URL", "postgresql:///b4p_test_external")
+# One database per pytest process, so concurrent runs can't drop each other's copy.
+TEST_DB = os.environ.get("TEST_DATABASE_URL", f"postgresql:///b4p_test_external_{os.getpid()}")
 # Local Blueprints_DB database the throwaway test DB is copied from.
 TEMPLATE_DB = os.environ.get("TEST_TEMPLATE_DB", "b4p_v2")
 
@@ -37,6 +38,8 @@ def no_email(monkeypatch):
     """Capture every outgoing email instead of sending it."""
     from app.services import email as email_svc
 
+    import main
+    main._inventory_cache.clear()  # the 60s sheet-inventory cache would leak between tests
     email_svc.reset_limits()  # the caps are in memory and would leak between tests
     sent = []  # (to, subject, html) per email
 

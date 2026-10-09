@@ -65,6 +65,11 @@ Both HTTP providers use HTTPS, which Render allows.
 
 - At most 3 confirmation emails per address per rolling hour (case-insensitive).
 - `EMAIL_DAILY_LIMIT` (default 200) emails per rolling 24 hours across everything the server sends.
+  Mail caused by anonymous submissions is limited further so it cannot starve status emails:
+  confirmations stop at 70% of the limit, and confirmations plus HQ alerts stop at 85%.
+- Address aliases count as one address: case, `+tag`, dots in Gmail addresses and `googlemail.com`.
+- Confirmations never contain links: URLs and domains typed into the org or item names are replaced
+  with `[link removed]`, and the subject is fixed.
 
 When a cap is hit the request is still saved and the email is skipped with a logged warning.
 Only the daily cap stops the HQ alert.

@@ -26,6 +26,9 @@ To import an old `org_requests.json` into the database (safe to re-run):
 
     DATABASE_URL=... python scripts/migrate_org_requests_to_db.py org_requests.json [--dry-run]
 
+`USE_SAMPLE_DATA=1` runs the API on `sample_inventory.json` (a small demo inventory in the repo, with requests kept in memory);
+set `SAMPLE_INVENTORY_PATH` to use a different file.
+
 ## Access control and limits
 
 - `GET /requests?email=<address>` (what the dashboard uses) returns only that exact address's lines
@@ -34,11 +37,27 @@ To import an old `org_requests.json` into the database (safe to re-run):
   is unset these endpoints return 403. The web UI does not call them today; HQ uses curl, e.g.
   `curl -H "X-HQ-Token: $TOKEN" -X PATCH -H 'content-type: application/json' -d '{"status":"Shipped"}' $API/requests/REQ-.../status`.
 - Status emails are sent only when the status actually changes; all user text in emails is HTML-escaped.
+- Rate limiting uses the real client IP from `X-Forwarded-For` (last hop) only when behind a trusted proxy:
+  this is on automatically on Render (it sets `RENDER`). `TRUST_PROXY=1` forces it on elsewhere and
+  `TRUST_PROXY=0` forces it off, since clients can fake that header. One warning is logged if the
+  header arrives while trust is off.
+- Accepted risk: `POST /requests` does not check item names against inventory or requested quantity against stock, because HQ reviews every request.
+- `GET /requests?email=` is limited to 20 lookups per IP per minute (separate from the POST limit).
 - `POST /requests`: max 100 lines, quantity 1-10000, valid email, 10 requests/min per IP
   (in-memory, see `rate_limit_post` in `main.py`; delete it to remove).
 - Availability = stock minus open (Under Review / Approved) requested quantity, matched by item name:
   5 or fewer left is "Limited", 0 left is "Requested". Shipped requests are not counted; HQ is
   expected to reduce the inventory quantity when something ships.
+
+## Performance
+
+- Responses over 1 KB are gzipped (`GZipMiddleware`); `/api/supplies` is about 134 KB raw in production.
+- `GET /api/supplies` and `GET /inventory/availability` send `Cache-Control: public, max-age=60,
+  stale-while-revalidate=300` and a weak `ETag` (hash of the body). A request with a matching
+  `If-None-Match` gets an empty `304`. Availability can therefore lag a new request by up to a minute.
+- `GET /requests` sends `Cache-Control: no-store` because it is per-clinic data.
+- `/api/supplies` leaves out the `Image URL` field (photos are not shown and can show patient labels).
+- In sheet mode the inventory read is also cached server-side for 60 seconds (`INVENTORY_CACHE_SECONDS` in `main.py`).
 
 ## Tests
 

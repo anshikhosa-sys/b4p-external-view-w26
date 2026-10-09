@@ -1,8 +1,10 @@
+import hashlib
 import hmac
 import json
+import logging
 import os
-import random
 import re
+import secrets
 import time
 import uuid
 from datetime import datetime, timezone
@@ -12,8 +14,10 @@ from typing import Literal, Optional
 import gspread
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from google.oauth2.service_account import Credentials
 from pydantic import BaseModel, Field, field_validator
 
@@ -26,11 +30,14 @@ from app.services import email as email_svc
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
-SAMPLE_PATH = BASE_DIR / "sample_inventory.json"
+SAMPLE_PATH = Path(os.environ.get("SAMPLE_INVENTORY_PATH") or BASE_DIR / "sample_inventory.json")
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # inventory JSON is ~134 KB raw
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -101,6 +108,15 @@ def _clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+@app.exception_handler(gspread.exceptions.APIError)
+async def _sheets_error(_, exc: gspread.exceptions.APIError):
+    # Google's error text can name our project, so it never reaches the client.
+    if getattr(exc.response, "status_code", None) == 429:
+        return JSONResponse(status_code=503,
+                            content={"detail": "Inventory service busy, try again in a minute."})
+    return JSONResponse(status_code=502, content={"detail": "Google Sheets error."})
+
+
 @app.exception_handler(psycopg.Error)
 async def _db_error(_, exc: psycopg.Error):
     # Never echo raw database text to clients. Input the database refuses (RAISE EXCEPTION,
@@ -128,22 +144,56 @@ RATE_LIMIT = 10  # requests per IP per minute
 _hits: dict[str, list[float]] = {}
 
 
-def rate_limit_post(request: Request) -> None:
+_warned_xff = False
+
+
+def _trust_proxy() -> bool:
+    """TRUST_PROXY=1/0 forces it; otherwise on only when running on Render (RENDER is set)."""
+    setting = os.environ.get("TRUST_PROXY", "").strip()
+    if setting in ("0", "1"):
+        return setting == "1"
+    return bool(os.environ.get("RENDER"))
+
+
+def _client_ip(request: Request) -> str:
+    """X-Forwarded-For is client-controlled, so read it only behind our own proxy.
+
+    Render's proxy appends the real client IP as the LAST hop, so we use that one.
+    """
+    global _warned_xff
     fwd = request.headers.get("x-forwarded-for", "")
-    ip = fwd.split(",")[-1].strip() or (request.client.host if request.client else "?")
+    if fwd and not _trust_proxy():
+        if not _warned_xff and request.client and request.client.host not in ("testclient", "127.0.0.1"):
+            _warned_xff = True
+            logger.warning("X-Forwarded-For received but proxy trust is off, so all users may share one "
+                           "rate limit. If you are behind a proxy, set TRUST_PROXY=1.")
+        fwd = ""
+    return fwd.split(",")[-1].strip() or (request.client.host if request.client else "?")
+
+
+def _check_rate(key: str, limit: int) -> None:
     now = time.monotonic()
-    recent = [t for t in _hits.get(ip, []) if now - t < 60]
-    if len(recent) >= RATE_LIMIT:
-        _hits[ip] = recent
+    recent = [t for t in _hits.get(key, []) if now - t < 60]
+    if len(recent) >= limit:
+        _hits[key] = recent
         raise HTTPException(status_code=429, detail="Too many requests. Try again in a minute.")
     recent.append(now)
-    _hits[ip] = recent
+    _hits[key] = recent
     if len(_hits) > 10000:  # keep memory bounded
         for k in [k for k, v in _hits.items() if not v or now - v[-1] >= 60]:
             del _hits[k]
 
 
-def get_inventory_records() -> list[dict]:
+def rate_limit_post(request: Request) -> None:
+    _check_rate(_client_ip(request), RATE_LIMIT)
+
+
+# Looser separate bucket for GET /requests?email=: the address is the only access check, so
+# unlimited lookups would let someone guess clinic addresses and read their history.
+LOOKUP_LIMIT = 20  # per IP per minute; a page load is one lookup
+
+
+def _load_inventory_records() -> list[dict]:
     if db.enabled():
         return db.get_supplies()
 
@@ -156,6 +206,34 @@ def get_inventory_records() -> list[dict]:
             out.append(rec)
         return out
 
+    # Live sheet: cache briefly so page loads and submits don't each cost a Sheets read (quota).
+    cached = _inventory_cache.get("records")
+    if cached is not None and time.monotonic() - _inventory_cache["at"] < INVENTORY_CACHE_SECONDS:
+        return list(cached)
+    records = _read_sheet_inventory()
+    _inventory_cache.update(records=records, at=time.monotonic())
+    return list(records)
+
+
+PHI_RE = re.compile(r"Pt\.?\s*ID\s*[A-Z0-9-]+", re.IGNORECASE)
+
+
+def _redact_phi(text: str) -> str:
+    """Specimen-tube labels in the inventory carry patient IDs ("Pt. ID 0000000001-1"); never expose them."""
+    return PHI_RE.sub("Pt. ID [removed]", text)
+
+
+def get_inventory_records() -> list[dict]:
+    """Inventory from the active source, with patient identifiers removed from every text field."""
+    return [{k: _redact_phi(v) if isinstance(v, str) else v for k, v in rec.items()}
+            for rec in _load_inventory_records()]
+
+
+INVENTORY_CACHE_SECONDS = 60
+_inventory_cache: dict = {}
+
+
+def _read_sheet_inventory() -> list[dict]:
     sheet_id = os.environ.get("GOOGLE_SHEET_ID")
     if not sheet_id:
         raise HTTPException(status_code=500, detail="Missing GOOGLE_SHEET_ID.")
@@ -212,7 +290,7 @@ def get_requests_worksheet(spreadsheet: gspread.Spreadsheet):
 def ensure_request_headers(ws: gspread.Worksheet) -> None:
     rows = ws.get_all_values()
     if not rows:
-        ws.append_row(REQ_HEADERS, value_input_option="USER_ENTERED")
+        ws.append_row(REQ_HEADERS, value_input_option="RAW")
         return
     if rows[0][0] != REQ_HEADERS[0]:
         raise HTTPException(
@@ -234,10 +312,7 @@ def read_request_rows(ws: gspread.Worksheet) -> list[dict]:
     for r in rows[1:]:
         if not any(cell.strip() for cell in r):
             continue
-        row_dict = {}
-        for i, key in enumerate(header):
-            row_dict[key] = r[i] if i < len(r) else ""
-        out.append(row_dict)
+        out.append(_row_dict(header, r))
     return out
 
 
@@ -275,9 +350,27 @@ def health():
     return {"source": "sheet", "ok": True, "email": email_svc.provider_name()}
 
 
+PUBLIC_CACHE = "public, max-age=60, stale-while-revalidate=300"
+
+
+def _cached_json(request: Request, data) -> Response:
+    """JSON with a short browser/CDN cache and a weak ETag, so repeat loads can be a 304."""
+    body = json.dumps(jsonable_encoder(data), separators=(",", ":"), ensure_ascii=False).encode()
+    etag = 'W/"' + hashlib.sha1(body).hexdigest() + '"'
+    headers = {"Cache-Control": PUBLIC_CACHE, "ETag": etag}
+    # If-None-Match may list several tags and may carry the W/ prefix; compare without it.
+    sent = {t.strip().removeprefix("W/") for t in request.headers.get("if-none-match", "").split(",")}
+    if "*" in sent or etag.removeprefix("W/") in sent:  # "*" matches any existing representation
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, media_type="application/json", headers=headers)
+
+
 @app.get("/api/supplies")
-async def supplies():
-    return get_inventory_records()
+async def supplies(request: Request):
+    # Photos are not shown anymore and can show patient labels, so they are not sent.
+    rows = [{k: v for k, v in rec.items() if k.strip().lower() != "image url"}
+            for rec in get_inventory_records()]
+    return _cached_json(request, rows)
 
 
 @app.get("/api/requests")
@@ -335,17 +428,14 @@ async def submit_request(body: SubmitRequestBody):
         name = snap.get("Name") or snap.get("name") or snap.get("Description") or ""
         mfr = snap.get("Manufacturer Name") or snap.get("Manufacturer") or ""
         cat = snap.get("Category") or ""
-        batch.append([
+        batch.append([_sheet_safe(c) for c in [
             group_id, ts, body.nametag, line.sheet_row,
             str(name), str(mfr), str(cat), line.quantity,
             body.request_notes.strip(), "Pending",
             (body.client_request_id or "").strip(),
-        ])
+        ]])
 
-    try:
-        ws.append_rows(batch, value_input_option="USER_ENTERED")
-    except gspread.exceptions.APIError as e:
-        raise HTTPException(status_code=502, detail=f"Google Sheets error: {e}") from e
+    ws.append_rows(batch, value_input_option="RAW")
 
     return {"ok": True, "request_group_id": group_id, "lines": len(batch), "submitted_at_utc": ts}
 
@@ -365,6 +455,14 @@ class OrgCartItemIn(BaseModel):
     category: str = Field(default="", max_length=200)
     quantity: int = Field(ge=1, le=10000)
     sheet_row: Optional[int] = Field(default=None, ge=2, le=500000)
+
+    @field_validator("item_name")
+    @classmethod
+    def name_not_blank(cls, v: str) -> str:
+        v = _redact_phi(v.strip())  # clinics submit the display name, which may carry a patient ID
+        if not v:  # a blank name would match every blank-named inventory row
+            raise ValueError("cannot be empty")
+        return v
 
 
 class OrgRequestBody(BaseModel):
@@ -392,9 +490,45 @@ class StatusUpdateBody(BaseModel):
     status: Literal["Approved", "Shipped"]
 
 
+# Same order the database enforces in set_request_status(): a request only moves forward.
+STATUS_ORDER = ["Under Review", "Approved", "Shipped", "Delivered"]
+
+
+def _check_transition(current: set[str], new: str) -> None:
+    """409 unless every line can move forward to `new` (lines already at `new` are fine)."""
+    for old in current - {new}:
+        if old not in STATUS_ORDER or STATUS_ORDER.index(old) > STATUS_ORDER.index(new):
+            raise HTTPException(status_code=409, detail="That status change is not allowed.")
+
+
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sheet_safe(v):
+    """Defense in depth for user text written to the sheet (we also write with RAW).
+
+    A leading apostrophe makes Sheets treat a cell starting with = + - @ as plain text.
+    Numbers pass through untouched. _sheet_unsafe() undoes this when reading back.
+    """
+    if isinstance(v, str) and v[:1] in _FORMULA_START:
+        return "'" + v
+    return v
+
+
+def _sheet_unsafe(v):
+    """Remove the apostrophe _sheet_safe added, so it never shows up in the UI."""
+    if isinstance(v, str) and v[:1] == "'" and v[1:2] in _FORMULA_START:
+        return v[1:]
+    return v
+
+
+def _row_dict(header: list[str], row: list[str]) -> dict:
+    return {header[j]: _sheet_unsafe(row[j] if j < len(row) else "") for j in range(len(header))}
+
+
 def _make_request_id() -> str:
     ts = int(datetime.now(timezone.utc).timestamp())
-    suffix = f"{random.randint(0, 999):03d}"
+    suffix = secrets.token_hex(3)  # unguessable; PATCH is keyed on this id in sheet mode
     return f"REQ-{ts}-{suffix}"
 
 
@@ -410,7 +544,7 @@ def _org_requests_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Workshe
     has_header_row = bool(first_row) and any(str(cell).strip() for cell in first_row)
 
     if not has_header_row:
-        ws.append_row(ORG_REQ_HEADERS, value_input_option="USER_ENTERED")
+        ws.append_row(ORG_REQ_HEADERS, value_input_option="RAW")
     elif first_row[0] != ORG_REQ_HEADERS[0]:
         raise HTTPException(
             status_code=500,
@@ -419,8 +553,19 @@ def _org_requests_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Workshe
     return ws
 
 
+LOT_SUFFIX_RE = re.compile(r"\s*\[Lot [^\]]*\]$")
+
+
+def _base_item_name(name: str) -> str:
+    """Drop the trailing "[Lot X, Box Y, Pallet Z]" the UI appends so HQ knows what to pull.
+
+    The full name is stored and emailed; only matching against inventory uses the base name.
+    """
+    return LOT_SUFFIX_RE.sub("", name.strip(), count=1)
+
+
 def _review_flag(inventory: list[dict], item_name: str) -> bool:
-    needle = item_name.strip().lower()
+    needle = _base_item_name(item_name).lower()
     for rec in inventory:
         name = (rec.get("Name") or rec.get("name") or "").strip().lower()
         if name == needle:
@@ -448,12 +593,20 @@ def _queue_submit_emails(tasks: BackgroundTasks, body: OrgRequestBody, request_i
     tasks.add_task(email_svc.send_hq_alert, body.org_name, body.org_email, items, request_id, flagged)
 
 
+def _review_flags(body: OrgRequestBody) -> list[bool]:
+    """Which requested items the inventory marks 'Review needed' (HQ must check them)."""
+    try:
+        inventory = get_inventory_records()
+    except Exception:  # a flaky inventory read must not block saving the request
+        return [False] * len(body.items)
+    return [_review_flag(inventory, i.item_name) for i in body.items]
+
+
 @app.post("/requests")
 def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks,
                        _rl: None = Depends(rate_limit_post)):
     if db.enabled():
-        inventory = get_inventory_records()
-        flags = [_review_flag(inventory, i.item_name) for i in body.items]
+        flags = _review_flags(body)
         request_id = db.create_request(body.org_name, body.org_email, [
             {"item_name": i.item_name, "category": i.category, "quantity": i.quantity,
              "review_flag": flag}
@@ -463,17 +616,20 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks,
                              [i.item_name for i, flag in zip(body.items, flags) if flag])
         return {"request_id": request_id, "status": "Under Review"}
 
+    flags = _review_flags(body)
+    flagged = [i.item_name for i, f in zip(body.items, flags) if f]
+
     if _use_sample_data():
         request_id = _make_request_id()
         ts = datetime.now(timezone.utc).isoformat()
-        for item in body.items:
+        for item, flag in zip(body.items, flags):
             _sample_org_request_rows.append({
                 "Request ID": request_id, "Org Name": body.org_name,
                 "Org Email": body.org_email, "Item Name": item.item_name,
                 "Category": item.category, "Quantity Requested": str(item.quantity),
-                "Status": "Under Review", "Timestamp": ts, "Review Flag": "FALSE",
+                "Status": "Under Review", "Timestamp": ts, "Review Flag": "TRUE" if flag else "FALSE",
             })
-        _queue_submit_emails(tasks, body, request_id, [])
+        _queue_submit_emails(tasks, body, request_id, flagged)
         return {"request_id": request_id, "status": "Under Review", "message": "USE_SAMPLE_DATA mode."}
 
     request_id = _make_request_id()
@@ -485,19 +641,16 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks,
     ]
 
     batch: list[list] = [
-        [request_id, body.org_name, body.org_email, item.item_name,
-         item.category, item.quantity, "Under Review", ts, "FALSE"]
-        for item in body.items
+        [_sheet_safe(c) for c in [request_id, body.org_name, body.org_email, item.item_name,
+                                  item.category, item.quantity, "Under Review", ts, "TRUE" if flag else "FALSE"]]
+        for item, flag in zip(body.items, flags)
     ]
 
     spreadsheet = _open_requests_spreadsheet()
     ws = _org_requests_worksheet(spreadsheet)
-    try:
-        ws.append_rows(batch, value_input_option="USER_ENTERED")
-    except gspread.exceptions.APIError as exc:
-        raise HTTPException(status_code=502, detail="Google Sheets error.") from exc
+    ws.append_rows(batch, value_input_option="RAW")
 
-    _queue_submit_emails(tasks, body, request_id, [])
+    _queue_submit_emails(tasks, body, request_id, flagged)
     return {"request_id": request_id, "status": "Under Review"}
 
 
@@ -524,12 +677,21 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
         return {"request_id": request_id, "status": body.status}
 
     if _use_sample_data():
-        updated_rows = 0
-        for row in _sample_org_request_rows:
-            if row.get("Request ID", "").strip() == request_id:
-                row["Status"] = body.status
-                updated_rows += 1
-        return {"request_id": request_id, "status": body.status, "updated_rows": updated_rows}
+        rows = [r for r in _sample_org_request_rows if r.get("Request ID", "").strip() == request_id]
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"Request ID '{request_id}' not found.")
+        current = {r["Status"].strip() for r in rows}
+        if current == {body.status}:
+            return {"request_id": request_id, "status": body.status, "changed": False}
+        _check_transition(current, body.status)
+        for row in rows:
+            row["Status"] = body.status
+        if rows[0]["Org Email"]:
+            items = [{"item_name": r["Item Name"], "category": r["Category"],
+                      "quantity": r["Quantity Requested"]} for r in rows]
+            tasks.add_task(email_svc.send_status_update, rows[0]["Org Name"], rows[0]["Org Email"],
+                           body.status, items)
+        return {"request_id": request_id, "status": body.status, "updated_rows": len(rows)}
 
     spreadsheet = _open_requests_spreadsheet()
     ws = _org_requests_worksheet(spreadsheet)
@@ -561,12 +723,12 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
             matching_sheet_rows.append(i)
             current_statuses.add(row[status_col].strip() if len(row) > status_col else "")
             if not org_name and len(row) > org_name_col:
-                org_name = row[org_name_col]
+                org_name = _sheet_unsafe(row[org_name_col])
             if not org_email and len(row) > org_email_col:
                 org_email = row[org_email_col]
             items.append({
-                "item_name": row[item_name_col] if len(row) > item_name_col else "",
-                "category": row[category_col] if len(row) > category_col else "",
+                "item_name": _sheet_unsafe(row[item_name_col]) if len(row) > item_name_col else "",
+                "category": _sheet_unsafe(row[category_col]) if len(row) > category_col else "",
                 "quantity": row[qty_col] if len(row) > qty_col else "",
             })
 
@@ -575,15 +737,13 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
 
     if current_statuses == {body.status}:
         return {"request_id": request_id, "status": body.status, "changed": False}
+    _check_transition(current_statuses, body.status)
 
     sheet_status_col = status_col + 1
-    try:
-        ws.batch_update([
-            {"range": gspread.utils.rowcol_to_a1(r, sheet_status_col), "values": [[body.status]]}
-            for r in matching_sheet_rows
-        ])
-    except gspread.exceptions.APIError as exc:
-        raise HTTPException(status_code=502, detail="Google Sheets error.") from exc
+    ws.batch_update([
+        {"range": gspread.utils.rowcol_to_a1(r, sheet_status_col), "values": [[body.status]]}
+        for r in matching_sheet_rows
+    ])
 
     if org_email:
         tasks.add_task(email_svc.send_status_update, org_name, org_email, body.status, items)
@@ -592,7 +752,7 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
 
 
 @app.get("/inventory/availability")
-async def inventory_availability():
+async def inventory_availability(request: Request):
     inventory = get_inventory_records()
 
     org_requests: list[dict] = []
@@ -612,7 +772,7 @@ async def inventory_availability():
                 header = all_rows[0]
                 for r in all_rows[1:]:
                     if any(cell.strip() for cell in r):
-                        org_requests.append({header[j]: (r[j] if j < len(r) else "") for j in range(len(header))})
+                        org_requests.append(_row_dict(header, r))
         except Exception:
             pass
 
@@ -622,7 +782,7 @@ async def inventory_availability():
     open_by_name: dict[str, int] = {}
     for r in org_requests:
         if r.get("Status", "").strip() in ("Under Review", "Approved"):
-            key = r.get("Item Name", "").strip().lower()
+            key = _base_item_name(r.get("Item Name", "")).lower()
             try:
                 open_by_name[key] = open_by_name.get(key, 0) + int(str(r.get("Quantity Requested", "0")).strip())
             except ValueError:
@@ -630,8 +790,9 @@ async def inventory_availability():
 
     def _qty(rec: dict) -> Optional[int]:
         try:
-            return int(str(rec.get("Quantity") or rec.get("quantity") or "").strip().replace(",", ""))
-        except ValueError:
+            # float() first: Sheets can export whole numbers as "12.0"
+            return int(float(str(rec.get("Quantity") or rec.get("quantity") or "").strip().replace(",", "")))
+        except (ValueError, OverflowError):
             return None
 
     stock_by_name: dict[str, int] = {}
@@ -648,13 +809,17 @@ async def inventory_availability():
         needle = item_name.lower()
         open_qty = open_by_name.get(needle, 0)
 
-        if open_qty:
-            remaining = stock_by_name.get(needle, 0) - open_qty
+        if qty is None:  # blank or unparseable stock: unknown, not low
+            remaining = None
+        elif open_qty:
+            remaining = max(stock_by_name.get(needle, 0) - open_qty, 0)
         else:
             remaining = qty
-        if open_qty and remaining <= 0:
+        if remaining is None:
+            availability_status, tags = "Available", ["Available"]
+        elif open_qty and remaining <= 0:
             availability_status, tags = "Requested", ["Requested"]
-        elif remaining is None or remaining <= 5:
+        elif remaining <= 5:
             availability_status, tags = "Limited", ["Low Stock"]
         else:
             availability_status, tags = "Available", ["Available"]
@@ -662,23 +827,27 @@ async def inventory_availability():
         # Org names stay in the sheet for HQ; don't expose them to other clinics.
         result.append({
             "sheet_row": sheet_row, "item_name": item_name, "category": category,
-            "availability_status": availability_status, "tags": tags,
+            "availability_status": availability_status, "tags": tags, "remaining": remaining,
             "requesting_org": None, "request_id": None,
         })
 
-    return result
+    return _cached_json(request, result)
 
 
 @app.get("/requests")
-async def list_org_requests(email: Optional[str] = None, x_hq_token: Optional[str] = Header(default=None)):
+async def list_org_requests(request: Request, response: Response, email: Optional[str] = None,
+                            x_hq_token: Optional[str] = Header(default=None)):
     """Org view: ?email=<exact address, case-insensitive> returns only that org's lines.
 
     Without a non-empty email this is the HQ view of ALL requests, which needs the
     X-HQ-Token header (disabled with 403 when HQ_API_TOKEN is not set).
     """
+    response.headers["Cache-Control"] = "no-store"  # per-clinic data must never be cached
     wanted = (email or "").strip().lower()
     if not wanted:
         require_hq(x_hq_token)
+    else:
+        _check_rate("lookup:" + _client_ip(request), LOOKUP_LIMIT)
 
     def mine(rows: list[dict]) -> list[dict]:
         if not wanted:
@@ -700,7 +869,7 @@ async def list_org_requests(email: Optional[str] = None, x_hq_token: Optional[st
 
     header = all_rows[0]
     return mine([
-        {header[j]: (r[j] if j < len(r) else "") for j in range(len(header))}
+        _row_dict(header, r)
         for r in all_rows[1:]
         if any(cell.strip() for cell in r)
     ])

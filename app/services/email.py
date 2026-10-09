@@ -11,6 +11,7 @@ See docs/EMAIL.md. CLI:  python -m app.services.email check | test you@example.o
 import json
 import logging
 import os
+import re
 import smtplib
 import sys
 import time
@@ -65,11 +66,17 @@ def _reply_to() -> str:
 CONFIRMATIONS_PER_ADDRESS = 3  # per rolling hour
 _sent_at: list[float] = []  # every outgoing email, for the daily cap
 _confirmed: dict[str, list[float]] = {}  # address -> confirmation times
+_submit_mail_times: list[float] = []  # mail caused by anonymous submissions (confirmation + alert)
+# Share of the daily cap anonymous submissions may use. The rest is kept for status mail, and
+# the last slice (alerts only) so HQ still hears about real requests during a flood.
+CONFIRMATION_SHARE = 0.7
+ALERT_SHARE = 0.85
 
 
 def reset_limits() -> None:
     _sent_at.clear()
     _confirmed.clear()
+    _submit_mail_times.clear()
 
 
 def _daily_limit() -> int:
@@ -89,10 +96,30 @@ def _under_daily_limit() -> bool:
     return True
 
 
+def _address_key(address: str) -> str:
+    """Collapse aliases that reach the same inbox (case, +tag, Gmail dots, googlemail)."""
+    local, _, domain = address.strip().lower().rpartition("@")
+    domain = domain.rstrip(".")
+    local = local.split("+")[0]
+    if domain in ("gmail.com", "googlemail.com"):
+        domain, local = "gmail.com", local.replace(".", "")
+    return f"{local}@{domain}"
+
+
+def _under_submit_budget(share: float) -> bool:
+    """Anonymous submissions may use only part of the daily cap, so they can't starve status mail."""
+    now = time.time()
+    _submit_mail_times[:] = [t for t in _submit_mail_times if now - t < 86400]
+    if len(_submit_mail_times) >= int(_daily_limit() * share):
+        return False
+    _submit_mail_times.append(now)
+    return True
+
+
 def _confirmation_allowed(address: str) -> bool:
     """True (and counts it) if this address got fewer than 3 confirmations in the last hour."""
     now = time.time()
-    key = address.strip().lower()
+    key = _address_key(address)
     recent = [t for t in _confirmed.get(key, []) if now - t < 3600]
     if len(recent) >= CONFIRMATIONS_PER_ADDRESS:
         _confirmed[key] = recent
@@ -197,22 +224,32 @@ def _subject(text: str) -> str:
 
 def _strip_tags(html: str) -> str:
     """Fallback plain text if a caller gives none."""
-    import re
     return re.sub(r"<[^>]+>", "", html)
 
 
-def _item_label(item: dict) -> str:
+def _no_links(text: str) -> str:
+    """Remove URLs and bare domains from submitter-typed text we mail to a third party.
+
+    The confirmation goes to whatever address the submitter typed, so it must not be able to
+    carry a phishing link in our branded email.
+    """
+    return re.sub(r"(?i)\b(?:https?://|www\.)\S+|\b[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b\S*",
+                  "[link removed]", str(text))
+
+
+def _item_label(item: dict, plain: bool = False) -> str:
     key = str(item.get("inventory_key", "")).strip()
-    return f"{item['item_name']}{f' [Key: {key}]' if key else ''} ({item['category']}) x {item['quantity']}"
+    name = _no_links(item["item_name"]) if plain else item["item_name"]
+    return f"{name}{f' [Key: {key}]' if key else ''} ({item['category']}) x {item['quantity']}"
 
 
-def _items_html(items: list[dict]) -> str:
-    rows = "".join(f'<li style="margin:0 0 6px;">{_e(_item_label(i))}</li>' for i in items)
+def _items_html(items: list[dict], plain: bool = False) -> str:
+    rows = "".join(f'<li style="margin:0 0 6px;">{_e(_item_label(i, plain))}</li>' for i in items)
     return f'<ul style="padding-left:20px;margin:0 0 16px;">{rows}</ul>'
 
 
-def _items_text(items: list[dict]) -> str:
-    return "\n".join(f"- {_item_label(i)}" for i in items)
+def _items_text(items: list[dict], plain: bool = False) -> str:
+    return "\n".join(f"- {_item_label(i, plain)}" for i in items)
 
 
 def _wrap(title: str, body: str) -> str:
@@ -232,21 +269,31 @@ def _wrap(title: str, body: str) -> str:
 
 
 def send_org_confirmation(org_name: str, org_email: str, items: list[dict], request_id: str) -> bool:
-    """Confirmation to the requesting org right after submission."""
+    """Confirmation to the requesting org right after submission.
+
+    Goes to an address the submitter typed, so their text is escaped and stripped of links, and
+    the subject is fixed.
+    """
     if not _confirmation_allowed(org_email):
         logger.warning("Already sent %s confirmations to this address in the last hour - skipping.",
                        CONFIRMATIONS_PER_ADDRESS)
         return False
+    if not _under_submit_budget(CONFIRMATION_SHARE):
+        logger.warning("Confirmation share of EMAIL_DAILY_LIMIT used up - skipping confirmation.")
+        return False
+    name = _no_links(org_name)
     html = _wrap("We received your request", f"""
-<p>Hi {_e(org_name)},</p>
+<p>Hi {_e(name)},</p>
 <p>Thanks for your supply request (<strong>{_e(str(request_id))}</strong>). You asked for:</p>
-{_items_html(items)}
+{_items_html(items, plain=True)}
 <p><strong>What happens next:</strong> our team will check availability and reply
 within 48 hours. You will get another email when the status changes.</p>
+<p>If you didn't request this, you can ignore this email.</p>
 <p>Thank you,<br><strong>Blueprints HQ</strong></p>""")
-    text = (f"Hi {org_name},\n\nThanks for your supply request ({request_id}). You asked for:\n"
-            f"{_items_text(items)}\n\nWhat happens next: our team will check availability and "
+    text = (f"Hi {name},\n\nThanks for your supply request ({request_id}). You asked for:\n"
+            f"{_items_text(items, plain=True)}\n\nWhat happens next: our team will check availability and "
             "reply within 48 hours. You will get another email when the status changes.\n\n"
+            "If you didn't request this, you can ignore this email.\n\n"
             "Thank you,\nBlueprints HQ")
     return send(org_email, "Your supply request has been received - Blueprints HQ", html, text)
 
@@ -257,6 +304,9 @@ def send_hq_alert(org_name: str, org_email: str, items: list[dict], request_id: 
     hq = _hq_email()
     if not hq:
         logger.warning("HQ_EMAIL not set - skipping HQ alert.")
+        return False
+    if not _under_submit_budget(ALERT_SHARE):
+        logger.warning("Submission share of EMAIL_DAILY_LIMIT used up - skipping HQ alert.")
         return False
     flagged_html = flagged_text = ""
     if review_flagged:
@@ -274,7 +324,7 @@ def send_hq_alert(org_name: str, org_email: str, items: list[dict], request_id: 
 {flagged_html}""")
     text = (f"New supply request\n\nOrganization: {org_name}\nEmail: {org_email}\n"
             f"Request ID: {request_id}\n\nItems:\n{_items_text(items)}{flagged_text}")
-    return send(hq, _subject(f"New supply request from {org_name}"), html, text)
+    return send(hq, _subject(f"New supply request from {_no_links(org_name)}"), html, text)
 
 
 def send_status_update(org_name: str, org_email: str, status: str, items: list[dict]) -> bool:
