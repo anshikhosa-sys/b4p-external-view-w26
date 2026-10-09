@@ -5,10 +5,13 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
   return (
     <header className="header">
       <div className="header__inner">
-        <a className="header__brand" href="#/" onClick={() => onQuery('')}>
+        <a className="header__brand" href="#/" onClick={() => onQuery('')} aria-label={`${siteName}, home`}>
           {/* Inlined into the CSS as a data: URI, so the page makes no image requests. */}
           <span className="header__logo" role="img" aria-label="Blueprints for Pangaea" />
-          <span className="header__name">{siteName}</span>
+          <span className="header__name">
+            <span className="header__name-long">{siteName}</span>
+            <span className="header__name-short">Supply Requests</span>
+          </span>
         </a>
         {onOpenCategories && (
           <button type="button" className="header__cats btn btn--quiet" onClick={onOpenCategories}>

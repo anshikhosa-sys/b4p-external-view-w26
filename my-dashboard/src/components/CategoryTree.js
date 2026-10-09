@@ -19,7 +19,7 @@ export default function CategoryTree({ catalog, activeSlug, total, onNavigate })
               aria-current={cat.slug === activeSlug ? 'page' : undefined}
               onClick={onNavigate}
             >
-              <span>{cat.name}</span> <span className="tree__count num">{cat.count.toLocaleString('en-US')}</span>
+              <span className="tree__name" title={cat.name}>{cat.name}</span> <span className="tree__count num">{cat.count.toLocaleString('en-US')}</span>
             </a>
           </li>
         ))}

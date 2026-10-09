@@ -161,6 +161,42 @@ Notes for the lead (UX, not bugs):
 - Search tiles show `.tile__cat`: at 375 px, "gauze" gives "Gauze sponges & pads" with "in Misc Surgical" and again with "in Wound Care & Bandages". At 360 px, "syringe" lines read "in Needles & Syringes" / "in IV Supplies", and the smallest tile is 45 px. Category-page tiles never render the line (new Jest test).
 - 360 / 375 px: no overflow on `#/`, a category, a type anchor, `#/item/2`, `#/slip`, `#/review`, `#/requests`, or either search. No console errors.
 
+**Compact type list up to 899 px, 2 columns** (lead's call; fresh build, JS 73.5 / CSS 12.7 KB). Misc Surgical, 43 tiles:
+
+| Width | Columns | Min tile height | Tile block | First product row | Overflow |
+|---|---|---|---|---|---|
+| 360 | 2 | 44 | 1,023 | 1,410 | 0 |
+| 600 | 2 | 44 | 968 | 1,311 | 0 |
+| 700 | 2 | 44 | 968 | 1,311 | 0 |
+| 768 | 2 | 44 | 968 | 1,361 | 0 |
+| 899 | 2 | 44 | 968 | 1,361 (was 1,928) | 0 |
+| 900 (tree appears) | 3, desktop tiles | 78 | 1,431 | 1,772 | 0 |
+
+The tablet note is resolved. At 900-~1100 px the desktop tiles sit next to the tree, so the first product row is at about 1,770 px. That's the existing desktop design, not a regression.
+
+## Round 4: collapsible landing cards, one-line title, sizing
+
+`node scripts/layout-check.js` (headless, local) plus a per-width title probe. Budget JS 73.9/75 (1.1 KB left), CSS 12.8/15, sprite 6.4, font 24 KB. Jest 409 passed / 2 skipped; pytest 298.
+
+| Check | 1920 | 1440 | 1280 | 1180 | 1179 | 1024 | 1000 | 761 | 375 / 360 |
+|---|---|---|---|---|---|---|---|---|---|
+| Collapsed card height (all cards) | — | 300 px | 300 | — | — | — | 300 | — | 300 / 300 |
+| Height spread in a row | — | 0 (3 cols) | 0 (3) | — | — | — | 0 (2) | — | 0 (1) |
+| Visible title | full name | full name | full name | full name | "Supply Requests" | "Supply Requests" | — | "Supply Requests" | hidden (≤760) |
+| Title height / line height | 24/24 (1 line) | 1 line | 1 line | 1 line | 1 line | 1 line | — | 1 line | — |
+| Title clipped | no | no | no | no | no | no | — | no | — |
+| Header height | 65 | 65 | 65 | 65 | 65 | 65 | — | 113 (2 rows) | — |
+| Overflow | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 on 7 routes |
+
+Toggles:
+- "Show all 17 types": `aria-expanded` goes false → true, `aria-controls="cat-types-airway-and-oxygen"` exists, and the card goes from 6 to 17 links. Focus stays on the button, and the label changes to "Show fewer".
+- Real Enter and Space key events both toggle it.
+- Expand all opens all 9 togglable cards and becomes "Collapse all", which closes them.
+- State is in `b4p.landing.open.v1`, kept across a reload, and a new session starts collapsed.
+- Jest covers bad saved values (`{bad`, numbers, `__proto__`/`constructor`, unknown slugs): all ignored.
+
+Speed: first row cold 73 ms, warm 37 ms; search 105-112 ms; CLS 0; 0 images, 1 self-hosted font. Scroll at 1440x900, two runs: landing, biggest category and search "a" all have 0 long tasks and 0 frames over 33 ms. Worst frame 19-23 ms at 1x and 4x, p95 19 ms (18 ms before; within run-to-run noise). INP 24 ms (median 16 ms) at 1x and 4x.
+
 ## Browser pass (McMaster layout)
 
 Chrome against the local build and 1,137-row snapshot; 360px checks in an iframe.

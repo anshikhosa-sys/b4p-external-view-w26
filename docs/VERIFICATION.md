@@ -43,14 +43,23 @@ inventory; no Google Sheet writes, no email sent). Details: `docs/QA_REPORT.md`,
   dev server.
 - CSP note: the inline `@font-face` in `index.html` relies on `style-src 'unsafe-inline'`.
 
+## Round 4: even landing, one-line title, sizing
+
+- Landing cards collapse to the first 6 types (A–Z) with "Show all N types",
+  plus "Expand all / Collapse all"; collapsed cards are all 300 px, so rows are even.
+- Header: logo | "External Supply Request Dashboard" on one line (≥ 1180 px),
+  "Supply Requests" below that, logo only on phones.
+- Sizing: type scale 12/14/16/20/28, spacing on a 4-px scale, 240 px category tree,
+  fixed table columns (Supply ~41%, month-only Expires), all buttons 44 px.
+
 ## Results (final run)
 
 | Check | Result |
 |---|---|
 | Backend tests (`.venv/bin/python -m pytest -q`) | 298 passed |
-| Frontend tests (`CI=true npx react-scripts test --watchAll=false`) | 400 passed, 2 skipped (live-data only) |
+| Frontend tests (`CI=true npx react-scripts test --watchAll=false`) | 409 passed, 2 skipped (live-data only) |
 | Production build (`CI=true npm run build`) | clean, zero warnings, no source maps |
-| Size budget (`npm run budget`) | JS 73.6/75 KB, CSS 12.7/15 KB, icons 6.4/12 KB, 1 self-hosted font 24/40 KB, 0 external fonts |
+| Size budget (`npm run budget`) | JS 73.9/75 KB, CSS 12.8/15 KB, icons 6.4/12 KB, 1 self-hosted font 24/40 KB, 0 external fonts |
 | First table row, return visit | ~70 ms (desktop), ~170 ms (phone, 4× CPU) |
 | First table row, first visit | ~170 ms on a warm API; ~3 s if Render is cold-starting |
 | Layout shift | 0.000 |
@@ -74,6 +83,6 @@ inventory; no Google Sheet writes, no email sent). Details: `docs/QA_REPORT.md`,
   inventory (HQ reviews every request).
 - Requests for rows with no sheet Name don't count toward holds (needs storing
   `sheet_row`; possible follow-up).
-- JS has ~1.4 KB of budget headroom — the next feature needs trimming or a budget bump.
+- JS has ~1.1 KB of budget headroom — the next feature needs trimming or a budget bump.
 - Data for HQ: 79 rows are used specimen tubes whose labels include patient IDs (masked
   in the app, but the photos and sheet still contain them); 54 rows have no name.

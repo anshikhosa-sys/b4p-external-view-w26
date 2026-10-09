@@ -30,7 +30,7 @@ const ProductRow = memo(function ProductRow({ p, group, quantity, onQuantity, on
           <Badges badges={badgesFor(p, p.onHold)} />
         </td>
         <td className="spec__maker" data-label="Maker">{p.manufacturer || '–'}</td>
-        <td className="spec__lot num" data-label="Lot">
+        <td className="spec__lot num" data-label="Lot" title={many ? undefined : p.lot || undefined}>
           {many ? (
             <button
               type="button"
@@ -43,8 +43,9 @@ const ProductRow = memo(function ProductRow({ p, group, quantity, onQuantity, on
             </button>
           ) : (p.lot || '–')}
         </td>
-        <td className="spec__exp num" data-label="Expires">
-          {!p.expiry ? '–' : many ? `from ${formatMonth(p.expiry)}` : formatExpiry(p.expiry)}
+        <td className="spec__exp num" data-label="Expires" title={p.expiry ? formatExpiry(p.expiry) : undefined}>
+          {/* Month only in the table; the lot breakdown and detail show the full date. */}
+          {!p.expiry ? '–' : `${many ? 'from ' : ''}${formatMonth(p.expiry)}`}
         </td>
         <td className="spec__stock num" data-label="In stock">
           <span className="visually-hidden">{stockLabel(p.quantity)}</span>

@@ -389,3 +389,10 @@ JS/CSS; storage keys unchanged (`b4p.cart.v1`, `b4p.inventory.v1`, `b4p.org.v1`)
   (or a hash) is removed while inline styles exist, or if an inline `<script>` is added, and it checks absolute `url()`s inside
   inline styles. Both negative cases were self-tested. `matchingTypes` uses plain `startsWith` word matching, and no `RegExp`
   is built from user input anywhere in `src`.
+
+## Round 4 regression (landing collapse, header, sizing) — 2026-10-09
+
+Clean. pytest 298 passed; the `CI=true` build compiles; no new sinks (only the static sprite), no new origins, no `RegExp` built from input.
+New `sessionStorage` key `b4p.landing.open.v1` is parsed in try/catch, filtered to strings and used only for `Set.has`. I mounted the
+real `<App/>` on `#/` with bad JSON, non-arrays, `{"__proto__":1}`, mixed or prototype-named entries, markup strings and a
+50,000-entry array: no crash, no injected markup. The new `title` attributes are React-escaped text.

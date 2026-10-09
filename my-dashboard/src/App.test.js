@@ -669,3 +669,59 @@ describe('round 3: progressive rows, titles', () => {
     expect(document.querySelector('a.tile .tile__cat')).toBeNull();
   });
 });
+
+describe('round 4: collapsible landing cards', () => {
+  const KEY = 'b4p.landing.open.v1';
+  const many = Array.from({ length: 9 }, (_, i) => supply(200 + i, {
+    Name: `Wound thing ${i}`, General: ['gauze pad', 'medical tape', 'bandage roll', 'abdominal pad', 'wound dressing', 'skin protectant', 'tubular bandage', 'casting material', 'adhesive bandage'][i],
+  }));
+  beforeEach(() => {
+    handlers.supplies = () => response(200, [...SUPPLIES, ...many]);
+    window.sessionStorage.clear();
+  });
+
+  const card = () => document.querySelector('.landing section.cat a[href="#/c/wound-care-and-bandages"]').closest('section');
+
+  test('a card shows 6 types until expanded; the toggle names its panel', async () => {
+    await renderAt('#/');
+    const c = card();
+    const toggle = within(c).getByRole('button', { name: /Show all \d+ types/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    const panel = document.getElementById(toggle.getAttribute('aria-controls'));
+    expect(panel).not.toBeNull();
+    expect(within(panel).getAllByRole('link')).toHaveLength(6);
+    userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle).toHaveTextContent('Show fewer');
+    expect(within(panel).getAllByRole('link').length).toBeGreaterThan(6);
+    expect(JSON.parse(window.sessionStorage.getItem(KEY))).toEqual(['wound-care-and-bandages']);
+  });
+
+  test('cards with 6 or fewer types have no toggle', async () => {
+    await renderAt('#/');
+    const gloves = document.querySelector('.landing a[href="#/c/gloves"]').closest('section');
+    expect(within(gloves).queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument();
+  });
+
+  test('Expand all / Collapse all', async () => {
+    await renderAt('#/');
+    userEvent.click(screen.getByRole('button', { name: 'Expand all' }));
+    expect(within(card()).getByRole('button', { name: 'Show fewer' })).toHaveAttribute('aria-expanded', 'true');
+    userEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+    expect(within(card()).getByRole('button', { name: /Show all/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('open cards are remembered for the session', async () => {
+    window.sessionStorage.setItem(KEY, JSON.stringify(['wound-care-and-bandages']));
+    await renderAt('#/');
+    expect(within(card()).getByRole('button', { name: 'Show fewer' })).toBeInTheDocument();
+  });
+
+  test.each(['{bad', '"x"', '[1,2]', '{"a":1}', JSON.stringify(['__proto__', 'constructor', 'not-a-category'])])(
+    'invalid saved state %s is ignored', async (raw) => {
+      window.sessionStorage.setItem(KEY, raw);
+      await renderAt('#/');
+      expect(within(card()).getByRole('button', { name: /Show all/ })).toHaveAttribute('aria-expanded', 'false');
+    },
+  );
+});
