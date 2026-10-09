@@ -234,6 +234,28 @@ Speed: first row cold 73 ms, warm 37 ms; search 105-112 ms; CLS 0; 0 images, 1 s
   - At 1100 the tree takes room, so Supply is 261 px and names reach 3-4 lines (37 rows on Needles & Syringes).
   - At 900 the search box is 164 px wide.
 
+**Stepper follow-up** (input `min-width: 5.5ch`, buttons `flex: none`, action column 150 px): 0 overflowing cells in both categories at 900/1024/1099/1100/1179/1279/1280/1440/1920. Columns aligned, page overflow 0. Stepper is 138 px in the 150 px column: input 49 px, buttons 44x44 and 44x44. 99 through 10000 all fit (42 px of text in a 47 px box). Phone card layout at 360/375/600: stepper 260 px (input 170 px, buttons 44x44), Add 88x44, no overflow. Jest 409 passed / 2 skipped; budget JS 73.9 / CSS 12.9 KB.
+
+**Tree at ≥1280** (Categories drawer at 900-1279; narrow column overrides at ≤1099). Both categories have 0 overflowing cells at every width; columns aligned; stepper 44x44 x2 fits; page overflow 0.
+
+| Width | Supply / Maker / Lot / Exp / Stock / Qty | Name lines 1/2/3/4 (needles) | Tree | Header / search | Title |
+|---|---|---|---|---|---|
+| 899 | (compact) | — | drawer | 113 px / 851 | Supply Requests |
+| 900 | 376 / 102 / 68 / 92 / 64 / 150 | 77/39/6/0 | drawer | 65 / 164 | Supply Requests |
+| 1024 | 475 / 117 / 78 / 92 / 64 / 150 | 83/39/0/0 | drawer | 65 / — | Supply Requests |
+| 1099 | 535 / 126 / 84 / 92 / 64 / 150 | 89/33/0/0 | drawer | 65 / 363 | Supply Requests |
+| 1100 | 429 / 158 / 116 / 126 / 74 / 150 | 82/39/1/0 | drawer | 65 / 364 | Supply Requests |
+| 1179 | 472 / 170 / 124 / 136 / 79 / 150 | 83/39/0/0 | drawer | 65 / 443 | Supply Requests |
+| 1180 | — | — | drawer | 65 / 300 | full name |
+| 1279 | 527 / 185 / 135 / 148 / 86 / 150 | 89/33/0/0 | drawer | 65 / 399 | full name |
+| 1280 | 378 / 144 / 106 / 115 / 67 / 150 | 77/39/6/0 | tree | 65 / 562 | full name |
+| 1440 / 1920 | 400 / 150 / 110 / 120 / 70 / 150 | 80/41/1/0 | tree | 65 / 602 | full name |
+
+- Landing cards are 300 px each with 0 spread per row: 3 columns at 1100/1279/1280/1440, 2 at 1024, 1 at 360.
+- Title is one line everywhere; toggles pass.
+- Budget JS 73.9 / CSS 12.9 KB; Jest 409 passed / 2 skipped.
+- The narrowest Supply column is now 376 px at 900 (it was 261 px at 1100 under the old breakpoint).
+
 ## Browser pass (McMaster layout)
 
 Chrome against the local build and 1,137-row snapshot; 360px checks in an iframe.
@@ -368,7 +390,7 @@ Options: `WIDTH=360`, `CPU=4`, `SLOW_NET=1`, `SEARCH=a,b`, `VERBOSE=1` (layout-s
 | FE-16 | Low | frontend-engineer (from bug-hunter) | `productKey` "|" collision; cart lines whose product vanished were silently dropped from the POST | Fixed, verified by Jest (stale-tab submit shows an inline error, 0 POSTs) |
 | FE-17 | Low | frontend-engineer | Round 3: one 35-58 ms frame (41 ms on the final build) at 4x CPU near the top of the biggest category, likely `content-visibility: auto` sections rendering on entry (baseline worst 21 ms) | Fixed (content-visibility removed), verified: misc-surgical worst 19-23 ms at 4x in 5 runs |
 | FE-18 | Low-Med | frontend-engineer | At 900-~1100 px (1024 measured) Expires (83 px) overflowed on "from Mon YYYY" (needs 109 px; 27 of 92 cells), and In stock (48 px) overflowed once | Fixed, verified: tree moved to ≥1100; Expires 92 / In stock 64 px at ≤1279; 0 overflowing cells at 900/1024/1099/1100/1279/1280/1440/1920 |
-| FE-19 | Low-Med | frontend-engineer | Table stepper input was 34 px (28 px of text): quantities of 1000 or more (33-42 px) were clipped | Fixed, verified: input 48 px (46 px of text), "10000" (42 px) fits |
+| FE-19 | Low-Med | frontend-engineer | Table stepper input was 34 px (28 px of text): quantities of 1000 or more (33-42 px) were clipped | Fixed, verified: input 5.5ch = 49 px (47 px of text), "10000" (42 px) fits; both stepper buttons a full 44x44 (they had shrunk to ~37 px); action column 150 px |
 | QA-09 | Low | email-engineer | `If-None-Match: *` returned 200 instead of 304 | Fixed, verified |
 | QA-08 | Low | email-engineer | README and the run instructions say `USE_SAMPLE_DATA=1 uvicorn main:app`, but `sample_inventory.json` is missing and `*.json` is gitignored, so `/api/supplies` fails on a fresh clone | Fixed, verified (repo `sample_inventory.json`, `SAMPLE_INVENTORY_PATH`) |
 
