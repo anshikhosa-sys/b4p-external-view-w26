@@ -461,11 +461,11 @@ off; inline email returns within the 5s budget (well under maxDuration 15s) even
 
 | ID | Sev | Finding | Status |
 |----|-----|---------|--------|
-| V1 | Low-Med | OpenAPI docs/schema served in production | Open (test) |
-| V2 | Low | .vercelignore misses common secret filenames | Open (test) |
-| V-PREVIEW | Medium | preview isolation depends on env vars being production-scoped | Open (config, not code) |
-| V-STATE | Medium | in-memory rate limits / email caps are per-instance on serverless | Open (architectural) |
-| V3 | Info | X-Forwarded-For trust behind Vercel's proxy | Verify in prod |
+| V1 | Low-Med | OpenAPI docs/schema served in production | Fixed, verified (off on Vercel/Render unless ENABLE_API_DOCS=1) |
+| V2 | Low | .vercelignore misses common secret filenames | Fixed, verified (globs: .env*, *.pem, *.key, *credential*, *gcreds*, ...) |
+| V-PREVIEW | Medium | preview isolation depends on env vars being production-scoped | Documented (DEPLOY_VERCEL.md scope table); deploy check |
+| V-STATE | Medium | in-memory rate limits / email caps are per-instance on serverless | Mitigated by required Vercel firewall rule (DEPLOY_VERCEL.md); app limits are best-effort |
+| V3 | Info | X-Forwarded-For trust behind Vercel's proxy | Fixed: reads x-vercel-forwarded-for, only when VERCEL is set (tested) |
 
 **V1 — docs exposed in production.** `/api/docs`, `/api/openapi.json`, `/api/redoc` all return 200 in every mode (the docs
 routes bypass the `_check_configured` 503 guard). The schema lists every route and names the `X-HQ-Token` auth header, which helps
@@ -508,3 +508,18 @@ endpoint should be HQ-gated.
 Sheet. Reported to main/the user to check the org Requests tab. No email was sent (provider keys blank, `_send` stubbed). Now
 prevented in-repo by commit bd2550f (`load_dotenv(override=False)`, skipped on Vercel/Render) and the `no_google_sheets` conftest
 guard; my probes now set empty-string env vars and hard-block the Google client.
+
+**Vercel pass, final (2026-10-10).** Re-run under the lead's stricter guard: from a temp copy of the repo with no `.env` in it or
+any parent (`find_dotenv()` returned `''`), every credential variable blanked, and the Google client replaced by one that raises.
+Results: production 503 guard on every route (USE_SAMPLE_DATA ignored, casing/whitespace handled); docs 404 in production and
+preview, 200 only for local dev; preview with no secrets runs on demo data with no email; inline email returns in 5.0s with a
+hanging provider (maxDuration 15s); `x-vercel-forwarded-for` is used on Vercel and ignored elsewhere, so a client on Render or
+local can't spoof its bucket with it (`test_vercel_ip_header_only_trusted_on_vercel`). Remaining deploy checks, not code: scope
+production secrets to Production only (V-PREVIEW), add the Vercel firewall rate-limit rule (V-STATE), and re-run once the first
+preview build succeeds.
+
+**Test fixes along the way.** email-engineer corrected two of my N-tests: the /64 test cleared `_hits` on every call, so it could
+never see a 429; and 37 remaining is "Available", not "Limited". I then found the /64 test was still vacuous, because
+`_ext_sample` cleared `TRUST_PROXY` after the test set it, so every request shared the "testclient" bucket. I moved the setting
+after the fixture and added a control: separate /64s must not share a bucket. Confirmed meaningful: it passes with `_ip_bucket` and
+fails when bucketing is replaced with the pre-fix per-address behavior.
