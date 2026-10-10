@@ -396,3 +396,8 @@ Clean. pytest 298 passed; the `CI=true` build compiles; no new sinks (only the s
 New `sessionStorage` key `b4p.landing.open.v1` is parsed in try/catch, filtered to strings and used only for `Set.has`. I mounted the
 real `<App/>` on `#/` with bad JSON, non-arrays, `{"__proto__":1}`, mixed or prototype-named entries, markup strings and a
 50,000-entry array: no crash, no injected markup. The new `title` attributes are React-escaped text.
+- **Font revert (2026-10-09):** self-hosted Manrope, its preload and the inline `<style>` @font-face were removed. Verified:
+  `public/fonts/` is gone, and the built `index.html` has 1 external script, 0 inline `<style>`, 0 `style=` attributes and no font
+  requests. The CSP guard is conditional and needed no change: it requires `'unsafe-inline'` only while inline styles exist,
+  and it still fails on any inline `<script>`. `'unsafe-inline'` in `style-src` is no longer needed for `index.html`; React
+  `style={}` props use the CSSOM, which `style-src` does not block. It could be dropped after a browser check.

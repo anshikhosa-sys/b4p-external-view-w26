@@ -18,7 +18,7 @@ const APP_URL = process.env.APP_URL || 'http://127.0.0.1:3765/#/c/needles-and-sy
 const API_ORIGIN = (process.env.API_ORIGIN || 'http://127.0.0.1:8765').replace(/\/$/, '');
 const ROW = process.env.ROW_SELECTOR || 'tr.item-row, [data-row]';
 const API_DELAY = 3000;
-const BUDGET = { warmFirstRowMs: 1000, coldFirstRowMs: 2500, images: 0, fonts: 0, localFonts: 1, cls: 0.1 };
+const BUDGET = { warmFirstRowMs: 1000, coldFirstRowMs: 2500, images: 0, fonts: 0, localFonts: 0, cls: 0.1 };
 
 for (const u of [APP_URL, API_ORIGIN]) {
   const host = new URL(u).hostname;

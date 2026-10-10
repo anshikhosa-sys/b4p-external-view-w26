@@ -8,7 +8,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 const KB = 1024;
-const BUDGET = { js: 75 * KB, css: 15 * KB, sprite: 12 * KB, font: 40 * KB };
+const BUDGET = { js: 75 * KB, css: 15 * KB, sprite: 12 * KB, font: 0 }; // system font stack: no font files
 
 const root = path.resolve(__dirname, '..');
 const build = path.resolve(process.argv[2] || process.env.BUILD_PATH || path.join(root, 'build'));
@@ -54,7 +54,7 @@ const sprite = findSprite();
 if (sprite.length) check('Icon sprite', sprite, BUDGET.sprite);
 else rows.push({ name: 'Icon sprite', size: 0, budget: BUDGET.sprite, files: [], ok: true, note: 'not found yet (set SPRITE_PATH)' });
 
-// Fonts: at most 40 KB of self-hosted font files, and nothing from a font CDN or any other host.
+// Fonts: system stack only, so no font files at all, and nothing from a font CDN or any other host.
 const html = fs.readFileSync(path.join(build, 'index.html'), 'utf8');
 const css = list(path.join(build, 'static', 'css'), /\.css$/).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 const external = [

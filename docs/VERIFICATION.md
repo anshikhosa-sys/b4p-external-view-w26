@@ -35,13 +35,12 @@ inventory; no Google Sheet writes, no email sent). Details: `docs/QA_REPORT.md`,
 - Expired stock hidden everywhere; single "Low stock" tag; tags are solid fills.
 - Footer: "Can't find what you need? Email us at contact@b4pglobal.org"
   (`REACT_APP_CONTACT_EMAIL`).
-- Manrope (self-hosted variable woff2, 24 KB, OFL) — Light for text.
+- Font: system font stack (Manrope was tried and reverted at the user's request).
 - Distinct drawings for every tube and syringe type (105 drawings).
 - Smoothness: stepper click → paint 31–36 ms → 8–11 ms (4× CPU); search 204 → ~105–147 ms;
   scrolling 0 long tasks, worst frame ≤ 23 ms at 4× CPU. `content-visibility` was tried and
   removed (it caused a one-frame hitch). Judge smoothness on a production build, not the
   dev server.
-- CSP note: the inline `@font-face` in `index.html` relies on `style-src 'unsafe-inline'`.
 
 ## Round 4: even landing, one-line title, sizing
 
@@ -59,11 +58,11 @@ inventory; no Google Sheet writes, no email sent). Details: `docs/QA_REPORT.md`,
 | Backend tests (`.venv/bin/python -m pytest -q`) | 298 passed |
 | Frontend tests (`CI=true npx react-scripts test --watchAll=false`) | 409 passed, 2 skipped (live-data only) |
 | Production build (`CI=true npm run build`) | clean, zero warnings, no source maps |
-| Size budget (`npm run budget`) | JS 73.9/75 KB, CSS 12.8/15 KB, icons 6.4/12 KB, 1 self-hosted font 24/40 KB, 0 external fonts |
+| Size budget (`npm run budget`) | JS 73.9/75 KB, CSS 12.8/15 KB, icons 6.4/12 KB, 0 fonts |
 | First table row, return visit | ~70 ms (desktop), ~170 ms (phone, 4× CPU) |
 | First table row, first visit | ~170 ms on a warm API; ~3 s if Render is cold-starting |
 | Layout shift | 0.000 |
-| Image / font / third-party requests | 0 / 1 (self-hosted Manrope) / 0 |
+| Image / font / third-party requests | 0 / 0 / 0 |
 | Browser matrix (Chrome, desktop + 360 px) | all pass, no console errors |
 | Security re-test (bug-hunter) | 12 fixed, 1 accepted risk, 0 open — safe to push |
 
