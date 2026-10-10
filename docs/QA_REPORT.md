@@ -289,6 +289,9 @@ I rewrote the 14 tests that encoded the old behaviour, and added new ones. pytes
   - 409 after Shipped and from Denied.
   - Only values outside the five statuses return 422 (Under Review, lowercase, DENIED, empty, null, Pending, Bogus).
 - **ETag.** Unchanged (304) after a submit, and changes after Approved.
+- **Strict `quantity`.** "5", true, false, 5.5, [5] and {"n":5} all return 422. Whole-number floats (5.0) also return 422; email-engineer is keeping that, since the UI always sends integers.
+- **Email limits.** The confirmation cap (5 per client IP per hour) and the HQ digest (after 30 an hour) are covered by email-engineer's `tests/test_email.py`; I confirmed those 3 tests run and pass.
+- **pytest:** 361 passed, 0 failed.
 
 ## Browser pass (McMaster layout)
 
