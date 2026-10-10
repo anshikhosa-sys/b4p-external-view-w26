@@ -64,7 +64,7 @@ def test_db_request_lifecycle(db_client, no_email):
     def status_of(n):
         return next(a for a in db_client.get("/inventory/availability").json() if a["item_name"] == n)["availability_status"]
 
-    assert status_of(name) == "Requested"
+    assert status_of(name) != "Requested"  # Under Review holds nothing: anonymous, unvetted
     assert len(no_email) == 1  # submission sends the org confirmation (HQ_EMAIL is unset in tests)
 
     def patch(i, s):
@@ -72,7 +72,7 @@ def test_db_request_lifecycle(db_client, no_email):
 
     assert patch(rid, "Approved").status_code == 200
     assert db_client.get("/requests", params={"email": email}).json()[0]["Status"] == "Approved"
-    assert status_of(name) == "Requested"  # Approved still holds the stock
+    assert status_of(name) == "Requested"  # only Approved holds the stock
 
     assert patch(rid, "Shipped").status_code == 200
     assert status_of(name) == "Limited"  # shipped stock is assumed deducted from inventory; no permanent brand

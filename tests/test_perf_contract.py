@@ -7,6 +7,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import HQ
 from fixtures.real_shape_supplies import ROWS
 
 CACHE = "public, max-age=60, stale-while-revalidate=300"
@@ -127,8 +128,12 @@ def test_etag_list_and_star(client, url):
 def test_availability_etag_changes_after_a_request(big):
     before = big.get("/inventory/availability")
     tag = before.headers["etag"]
-    big.post("/requests", json={"org_name": "E", "org_email": "e@example.org",
-                                "items": [{"item_name": "Synthetic exam glove small", "quantity": 79}]})
+    rid = big.post("/requests", json={"org_name": "E", "org_email": "e@example.org",
+                                      "items": [{"item_name": "Synthetic exam glove small", "quantity": 79}]}).json()["request_id"]
+    # Under Review holds nothing, so the representation (and ETag) is unchanged...
+    assert big.get("/inventory/availability", headers={"If-None-Match": tag}).status_code == 304
+    # ...until HQ approves it
+    assert big.patch(f"/requests/{rid}/status", json={"status": "Approved"}, headers=HQ).status_code == 200
     after = big.get("/inventory/availability", headers={"If-None-Match": tag})
     assert after.status_code == 200 and after.headers["etag"] != tag
     assert after.json() != before.json()

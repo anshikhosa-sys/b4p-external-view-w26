@@ -1,5 +1,6 @@
 import io
 import json
+from pathlib import Path
 import urllib.error
 
 import pytest
@@ -37,12 +38,13 @@ def test_no_hq_email_still_confirms_org(sheet_client, no_email):
     assert [m[0] for m in no_email] == ["clinic@example.org"]
 
 
-def test_org_name_is_escaped_in_both_emails(sheet_client, no_email, monkeypatch):
+def test_org_name_is_escaped_for_hq_and_absent_from_the_confirmation(sheet_client, no_email, monkeypatch):
     monkeypatch.setenv("HQ_EMAIL", "hq@example.org")
     assert _submit(sheet_client, org="<script>alert(1)</script>").status_code == 200
     assert len(no_email) == 2
-    for _, _, html in no_email:
-        assert "<script>" not in html and "&lt;script&gt;" in html
+    by_to = {to: html for to, _, html in no_email}
+    assert "<script>" not in by_to["hq@example.org"] and "&lt;script&gt;" in by_to["hq@example.org"]
+    assert "script" not in by_to["clinic@example.org"]  # fixed template, no submitter text
 
 
 def test_db_submit_alert_lists_flagged_items(db_client, no_email, monkeypatch):
@@ -70,17 +72,35 @@ def test_confirmations_capped_per_address_but_request_and_alert_still_happen(she
     to_hq = [m for m in no_email if m[0] == "hq@example.org"]
     assert len(to_victim) == 3  # case-insensitive, 3 per hour
     assert len(to_hq) == 5  # HQ alerts are not capped per address
+    monkeypatch.setattr(e, "CONFIRMATIONS_PER_IP", 100)  # this test is about the per-address cap
     assert _submit(sheet_client, email="other@example.org").status_code == 200
     assert any(m[0] == "other@example.org" for m in no_email)  # other addresses unaffected
 
 
-def test_submit_mail_stays_under_its_share_of_the_daily_cap(sheet_client, no_email, monkeypatch, caplog):
+def test_confirmations_stay_under_their_share_but_hq_alerts_never_do(sheet_client, no_email, monkeypatch, caplog):
     monkeypatch.setenv("HQ_EMAIL", "hq@example.org")
-    monkeypatch.setenv("EMAIL_DAILY_LIMIT", "10")  # submit mail (confirmation + alert) stops at 8
+    monkeypatch.setenv("EMAIL_DAILY_LIMIT", "10")  # confirmations stop at 7
+    monkeypatch.setattr(e, "CONFIRMATIONS_PER_IP", 100)
     for i in range(10):
         assert _submit(sheet_client, email=f"o{i}@example.org").status_code == 200
-    assert len(no_email) == 8  # the other 2 slots stay free for status mail
+    assert sum(1 for m in no_email if m[0] != "hq@example.org") == 7
+    assert sum(1 for m in no_email if m[0] == "hq@example.org") == 10  # a flood cannot blind HQ
     assert "EMAIL_DAILY_LIMIT" in caplog.text
+
+
+def test_confirmations_capped_per_client_ip(sheet_client, no_email):
+    for i in range(7):
+        assert _submit(sheet_client, email=f"ip{i}@example.org").status_code == 200
+    assert len(no_email) == e.CONFIRMATIONS_PER_IP  # 5 an hour from one client
+
+
+def test_hq_alerts_beyond_30_an_hour_become_one_digest(no_email, monkeypatch):
+    monkeypatch.setenv("HQ_EMAIL", "hq@example.org")
+    for _ in range(35):
+        e.send_hq_alert("Org", "o@example.org", [{"item_name": "Gauze", "category": "C", "quantity": 1}], "REQ-1", [])
+    subjects = [m[1] for m in no_email]
+    assert sum(s.startswith("New supply request") for s in subjects) == 30
+    assert sum("more supply request" in s for s in subjects) == 1  # not one per extra alert
 
 
 def test_daily_cap_counts_every_send(monkeypatch):
@@ -204,13 +224,13 @@ def test_confirmation_has_fixed_subject_and_no_links(sheet_client, no_email):
 
 # --- patient identifiers (specimen-tube labels in the inventory) -----------------
 
-PHI_NAME = "UR IMMUNO, UPEP FROZEN Pt. ID 0000000006-1 ST15"
+PHI_NAME = "UR IMMUNO, UPEP FROZEN Pt. ID " "0000000006-1 ST15"
 
 
 def test_redact_phi_variants():
     import main
     assert main._redact_phi(PHI_NAME) == "UR IMMUNO, UPEP FROZEN Pt. ID [removed] ST15"
-    assert main._redact_phi("pt id 0000000007-1") == "Pt. ID [removed]"
+    assert main._redact_phi("pt id " "0000000007-1") == "Pt. ID [removed]"
     assert main._redact_phi("PT.ID  A1") == "Pt. ID [removed]"
     assert main._redact_phi("Gauze pads") == "Gauze pads"
 
@@ -218,7 +238,7 @@ def test_redact_phi_variants():
 def test_inventory_endpoints_never_return_patient_ids(sheet_client, monkeypatch):
     import main
     rec = {"Name": PHI_NAME, "Category": "Lab", "Quantity": "9", "Review": "",
-           "Notes": "label Pt. ID 0000000008-1", "_sheet_row": 2}
+           "Notes": "label Pt. ID " "0000000008-1", "_sheet_row": 2}
     monkeypatch.setattr(main, "_load_inventory_records", lambda: [dict(rec)])
     for url in ("/api/supplies", "/inventory/availability"):
         body = sheet_client.get(url).text
@@ -298,20 +318,23 @@ def _status_of(client, name):
     return next(a for a in client.get("/inventory/availability").json() if a["item_name"] == name)["availability_status"]
 
 
-def test_suffixed_request_holds_stock_like_a_plain_one(sheet_client, no_email):
+def test_suffixed_approved_request_holds_stock_like_a_plain_one(sheet_client, no_email, monkeypatch):
     import main
-    for suffix, expected in (("", "Requested"), (" [Lot L1, Box 2, Pallet 3]", "Requested")):
+    monkeypatch.setattr(e, "CONFIRMATIONS_PER_IP", 100)
+    for n, (suffix, qty, expected) in enumerate(((("", 10, "Requested")),
+                                                   (" [Lot L1, Box 2, Pallet 3]", 10, "Requested"),
+                                                   (" [Lot L1, Box 2, Pallet 3]", 6, "Limited")), start=1):
         main._sample_org_request_rows.clear()
-        main._inventory_cache.clear()
+        main._hits.clear()
         assert _status_of(sheet_client, "Gauze") == "Available"  # 10 in stock
-        r = sheet_client.post("/requests", json={"org_name": "O", "org_email": f"o{len(suffix)}@example.org",
-                                                 "items": [{"item_name": "Gauze" + suffix, "quantity": 10}]})
+        rid = sheet_client.post("/requests", json={
+            "org_name": "O", "org_email": f"o{n}@example.org",
+            "items": [{"item_name": "Gauze" + suffix, "quantity": qty}]}).json()["request_id"]
+        assert _status_of(sheet_client, "Gauze") == "Available"  # Under Review holds nothing
+        r = sheet_client.patch(f"/requests/{rid}/status", json={"status": "Approved"},
+                               headers={"X-HQ-Token": "test-hq-token"})
         assert r.status_code == 200
         assert _status_of(sheet_client, "Gauze") == expected
-    main._sample_org_request_rows.clear()
-    sheet_client.post("/requests", json={"org_name": "O", "org_email": "p@example.org",
-                                         "items": [{"item_name": "Gauze [Lot L1, Box 2, Pallet 3]", "quantity": 6}]})
-    assert _status_of(sheet_client, "Gauze") == "Limited"  # 4 left
 
 
 def test_review_flag_matches_suffixed_name_and_full_name_is_kept(sheet_client, no_email, monkeypatch):
@@ -324,4 +347,45 @@ def test_review_flag_matches_suffixed_name_and_full_name_is_kept(sheet_client, n
     assert rows[0]["Review Flag"] == "TRUE" and rows[0]["Item Name"] == full
     alert = next(m for m in no_email if m[0] == "hq@example.org")
     assert "Manual review required" in alert[2] and "Lot L9" in alert[2]
-    assert any("Lot L9" in m[2] for m in no_email if m[0] == "r@example.org")
+    assert all("Lot L9" not in m[2] for m in no_email if m[0] == "r@example.org")  # fixed template
+
+
+# --- digest without a timer; cache clear on status change ---------------------------
+
+def _flood_alerts(n):
+    items = [{"item_name": "Gauze", "category": "C", "quantity": 1}]
+    for _ in range(n):
+        e.send_hq_alert("Org", "o@example.org", items, "REQ-1", [])
+
+
+def test_held_back_digest_is_sent_by_the_next_request_after_the_hour(sheet_client, no_email, monkeypatch):
+    monkeypatch.setenv("HQ_EMAIL", "hq@example.org")
+    _flood_alerts(31)  # 30 alerts + the 31st triggers the first digest at once
+    digests = lambda: [m for m in no_email if "more supply request" in m[1]]  # noqa: E731
+    assert len(digests()) == 1
+    _flood_alerts(4)  # held back, and a digest was just sent, so it must wait
+    assert len(digests()) == 1 and e.digest_due() is False
+    sheet_client.get("/health")
+    assert len(digests()) == 1  # not due yet
+
+    real_time = e.time.time
+    monkeypatch.setattr(e.time, "time", lambda: real_time() + 3700)  # an hour later, no timer ran
+    assert e.digest_due() is True
+    sheet_client.get("/health")  # any request flushes it
+    assert len(digests()) == 2 and e.digest_due() is False
+    sheet_client.get("/health")
+    assert len(digests()) == 2  # only once
+
+
+def test_email_module_has_no_timers_or_threads():
+    source = (Path(__file__).resolve().parent.parent / "app" / "services" / "email.py").read_text()
+    assert "threading" not in source and "Timer" not in source and "sched" not in source
+
+
+def test_status_change_clears_this_instances_inventory_cache(sheet_client, no_email):
+    import main
+    rid = _submit(sheet_client).json()["request_id"]
+    main._inventory_cache.update(records=[{"Name": "stale"}], at=main.time.monotonic())
+    r = sheet_client.patch(f"/requests/{rid}/status", json={"status": "Approved"},
+                           headers={"X-HQ-Token": "test-hq-token"})
+    assert r.status_code == 200 and main._inventory_cache == {}

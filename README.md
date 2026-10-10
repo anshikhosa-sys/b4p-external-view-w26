@@ -41,15 +41,18 @@ set `SAMPLE_INVENTORY_PATH` to use a different file.
 - Status emails are sent only when the status actually changes; all user text in emails is HTML-escaped.
 - Rate limiting uses the real client IP from `X-Forwarded-For` (last hop) only when behind a trusted proxy:
   this is on automatically on Render (it sets `RENDER`). `TRUST_PROXY=1` forces it on elsewhere and
-  `TRUST_PROXY=0` forces it off, since clients can fake that header. One warning is logged if the
+  `TRUST_PROXY=0` forces it off, since clients can fake that header. IPv6 clients share one bucket per /64, and the
+  limiter table is capped at 10,000 entries. One warning is logged if the
   header arrives while trust is off.
 - Accepted risk: `POST /requests` does not check item names against inventory or requested quantity against stock, because HQ reviews every request.
 - `GET /requests?email=` is limited to 20 lookups per IP per minute (separate from the POST limit).
 - `POST /requests`: max 100 lines, quantity 1-10000, valid email, 10 requests/min per IP
   (in-memory, see `rate_limit_post` in `main.py`; delete it to remove).
-- Availability = stock minus open (Under Review / Approved) requested quantity, matched by item name:
-  5 or fewer left is "Limited", 0 left is "Requested". Shipped requests are not counted; HQ is
-  expected to reduce the inventory quantity when something ships.
+- Availability = stock minus what HQ has **Approved**, matched by normalized item name (case, spacing
+  and Unicode variants match; a name used by several inventory rows is applied to them in order).
+  Under Review requests hold nothing, because anyone can submit one. 5 or fewer left is "Limited",
+  0 left with an approval is "Requested". Shipped requests are not counted; HQ is expected to reduce
+  the inventory quantity when something ships. Negative quantities count as 0.
 
 ## Performance
 
@@ -57,6 +60,8 @@ set `SAMPLE_INVENTORY_PATH` to use a different file.
 - `GET /api/supplies` and `GET /inventory/availability` send `Cache-Control: public, max-age=60,
   stale-while-revalidate=300` and a weak `ETag` (hash of the body). A request with a matching
   `If-None-Match` gets an empty `304`. Availability can therefore lag a new request by up to a minute.
+- After HQ changes a status, that server instance drops its inventory cache at once. Other instances catch up within
+  60 seconds, and browsers or the CDN may keep the cached availability for up to 60 seconds.
 - `GET /requests` sends `Cache-Control: no-store` because it is per-clinic data.
 - `/api/supplies` leaves out the `Image URL` field (photos are not shown and can show patient labels).
 - In sheet mode the inventory read is also cached server-side for 60 seconds (`INVENTORY_CACHE_SECONDS` in `main.py`).

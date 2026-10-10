@@ -92,7 +92,8 @@ def test_list_by_email_row_shape(client):
 # --- validation boundaries -------------------------------------------------------
 
 @pytest.mark.parametrize("qty,ok", [(0, False), (-1, False), (1, True), (10000, True),
-                                    (10001, False), (1.5, False), (None, False), ("abc", False)])
+                                    (10001, False), (1.5, False), (5.5, False), (None, False), ("abc", False),
+                                    ("5", False), (True, False), (False, False), ([5], False), ({"n": 5}, False)])
 def test_quantity_bounds(client, qty, ok):
     r = _post(client, items=[{"item_name": _name(client), "quantity": qty}])
     assert r.status_code == (200 if ok else 422), r.text
@@ -190,7 +191,7 @@ def test_patch_requires_token(client, monkeypatch):
     assert client.patch(url, json={"status": "Approved"}, headers=HQ).status_code == 403
 
 
-@pytest.mark.parametrize("status", ["Under Review", "Delivered", "approved", "", None, "Bogus"])
+@pytest.mark.parametrize("status", ["Under Review", "approved", "DENIED", "", None, "Bogus", "Pending"])
 def test_patch_rejects_unknown_status(client, status):
     rid = _post(client).json()["request_id"]
     assert client.patch(f"/requests/{rid}/status", json={"status": status}, headers=HQ).status_code == 422

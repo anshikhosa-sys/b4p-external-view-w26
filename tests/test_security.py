@@ -88,12 +88,17 @@ def test_availability_is_stock_minus_open_requests(sheet_client):
     def st(n):
         return next(a for a in c.get("/inventory/availability").json() if a["item_name"] == n)["availability_status"]
 
+    def approve(r):
+        url = f"/requests/{r.json()['request_id']}/status"
+        assert c.patch(url, json={"status": "Approved"}, headers=HQ).status_code == 200
+
     assert st("Bandage") == "Available"
+    r, _ = _post(c, items=[{"item_name": "Bandage", "quantity": 49}])
+    assert st("Bandage") == "Available"  # Under Review holds nothing: anonymous, unvetted
+    approve(r)
+    assert st("Bandage") == "Limited"  # 1 left
     r, _ = _post(c, items=[{"item_name": "Bandage", "quantity": 1}])
-    assert st("Bandage") == "Available"  # one fake request no longer brands the item
-    _post(c, items=[{"item_name": "Bandage", "quantity": 45}])
-    assert st("Bandage") == "Limited"  # 4 left
-    _post(c, items=[{"item_name": "Bandage", "quantity": 4}])
+    approve(r)
     assert st("Bandage") == "Requested"  # 0 left
 
 
@@ -147,7 +152,29 @@ def test_invalid_transition_maps_to_409(db_client, monkeypatch):
     r, _ = _post(db_client, items=[{"item_name": _name(db_client), "quantity": 1}])
 
     def refuse(*a, **k):
-        raise psycopg.errors.RaiseException("cannot go from Shipped to Approved (internal detail)")
+        raise psycopg.errors.RaiseException("cannot change request R from Shipped to Approved (internal detail)")
     monkeypatch.setattr(main.db, "set_request_status", refuse)
     res = db_client.patch(f"/requests/{r.json()['request_id']}/status", json={"status": "Approved"}, headers=HQ)
     assert res.status_code == 409 and "internal" not in res.text
+
+
+@pytest.mark.parametrize("exc,status", [
+    ("NoDataFound", 404),  # SQLSTATE P0002: unknown id
+    ("RaiseException", 400),  # any other RAISE is bad input, not a refused transition
+])
+def test_db_errors_on_status_change_map_to_404_and_400(db_client, monkeypatch, exc, status):
+    import psycopg
+    import main
+    r, _ = _post(db_client, items=[{"item_name": _name(db_client), "quantity": 1}])
+
+    def fail(*a, **k):
+        raise getattr(psycopg.errors, exc)("unknown status (internal detail)")
+    monkeypatch.setattr(main.db, "set_request_status", fail)
+    res = db_client.patch(f"/requests/{r.json()['request_id']}/status", json={"status": "Approved"}, headers=HQ)
+    assert res.status_code == status and "internal" not in res.text
+
+
+def test_quantity_must_be_a_json_number(sheet_client):
+    for qty in ("5", True, 5.5):
+        body = {"org_name": "O", "org_email": "o@x.org", "items": [{"item_name": "Gauze", "quantity": qty}]}
+        assert sheet_client.post("/requests", json=body).status_code == 422, qty

@@ -69,31 +69,39 @@ def test_full_lifecycle_with_emails(client, no_email, monkeypatch):
     monkeypatch.setenv("HQ_EMAIL", HQ_ADDR)
     (a, a_stock), (b, _) = _pick_two(client)
     email = _email()
+    org = f"Lifecycle Clinic {uuid.uuid4().hex[:6]}"
     assert _status(client, a) == "Available"
 
-    r = client.post("/requests", json={"org_name": "Lifecycle Clinic", "org_email": email, "items": [
+    r = client.post("/requests", json={"org_name": org, "org_email": email, "items": [
         {"item_name": a, "category": "X", "quantity": a_stock},
         {"item_name": b, "category": "Y", "quantity": 1},
     ]})
     assert r.status_code == 200, r.text
     rid = r.json()["request_id"]
 
-    # submit: exactly one confirmation to the clinic and one alert to HQ, both naming the request
+    # submit: one confirmation to the clinic and one alert to HQ
     assert sorted(m[0].lower() for m in no_email) == sorted([HQ_ADDR, email.lower()])
-    for to, subject, html in no_email:
-        assert rid in subject + html and a in html
+    clinic = next(m for m in no_email if m[0].lower() == email.lower())
+    hq = next(m for m in no_email if m[0] == HQ_ADDR)
+    # the clinic email is a fixed template: request ID, count, status; no org or item names
+    assert rid in clinic[1] + clinic[2]
+    for secret in (org, a, b):
+        assert secret not in clinic[1] + clinic[2]
+    # the HQ alert keeps the details
+    assert rid in hq[1] + hq[2] and a in hq[2]
 
     # the clinic sees both lines, regardless of case/whitespace in the email they type
     mine = client.get("/requests", params={"email": f"  {email.upper()} "}).json()
     assert {x["Item Name"] for x in mine} == {a, b} and {x["Request ID"] for x in mine} == {rid}
     assert {x["Status"] for x in mine} == {"Under Review"}
     assert client.get("/requests", params={"email": "someone.else@example.org"}).json() == []
-    assert _status(client, a) == "Requested"  # all of it is on hold
+    assert _status(client, a) == "Available"  # Under Review holds nothing
 
-    # Approved: one email to the clinic, still on hold
+    # Approved: one status email to the clinic, and now the stock is held
     assert _patch(client, rid, "Approved").status_code == 200
     assert len(no_email) == 3 and no_email[-1][0].lower() == email.lower()
     assert "Approved" in no_email[-1][1] + no_email[-1][2]
+    assert a not in no_email[-1][1] + no_email[-1][2]
     assert {x["Status"] for x in client.get("/requests", params={"email": email}).json()} == {"Approved"}
     assert _status(client, a) == "Requested"
 
@@ -107,6 +115,32 @@ def test_full_lifecycle_with_emails(client, no_email, monkeypatch):
     assert len(no_email) == 4 and "Shipped" in no_email[-1][1] + no_email[-1][2]
     assert {x["Status"] for x in client.get("/requests", params={"email": email}).json()} == {"Shipped"}
     assert _status(client, a) == "Available"
+
+    # Delivered is the last step; nothing moves backwards or gets denied after shipping
+    assert _patch(client, rid, "Delivered").status_code == 200 and len(no_email) == 5
+    for back in ("Shipped", "Approved", "Denied", "Cancelled"):
+        assert _patch(client, rid, back).status_code == 409, back
+    assert len(no_email) == 5
+
+
+@pytest.mark.parametrize("path,final,ok", [
+    (["Denied"], "Denied", True),
+    (["Cancelled"], "Cancelled", True),
+    (["Approved", "Denied"], "Denied", True),
+    (["Approved", "Cancelled"], "Cancelled", True),
+    (["Approved", "Shipped", "Cancelled"], "Shipped", False),
+    (["Denied", "Approved"], "Denied", False),
+])
+def test_deny_and_cancel_rules(client, no_email, path, final, ok):
+    name, _ = _pick_two(client)[0]
+    email = _email()
+    rid = client.post("/requests", json={"org_name": "Rules", "org_email": email,
+                                         "items": [{"item_name": name, "quantity": 1}]}).json()["request_id"]
+    codes = [_patch(client, rid, st).status_code for st in path]
+    assert codes[:-1] == [200] * (len(codes) - 1)
+    assert codes[-1] == (200 if ok else 409)
+    assert {x["Status"] for x in client.get("/requests", params={"email": email}).json()} == {final}
+    assert _status(client, name) == "Available"  # denied/cancelled requests hold nothing
 
 
 def test_two_orgs_never_see_each_other(client):
@@ -160,12 +194,14 @@ def test_live_sheet_lifecycle(live_sheet, no_email, monkeypatch):  # noqa: F811
     rid = c.post("/requests", json={"org_name": "Sheet Clinic", "org_email": email,
                                     "items": [{"item_name": "Gauze", "quantity": 8}]}).json()["request_id"]
     assert len(no_email) == 2
-    assert _status(c, "Gauze") == "Requested"  # 10 - (2 existing + 8)
+    assert _status(c, "Gauze") == "Available"  # nothing Approved yet (the seeded row is Under Review)
     assert _patch(c, rid, "Approved").status_code == 200 and len(no_email) == 3
+    assert _status(c, "Gauze") == "Limited"  # 10 - 8 approved = 2
     assert _patch(c, rid, "Approved").json().get("changed") is False and len(no_email) == 3
     assert _patch(c, rid, "Shipped").status_code == 200 and len(no_email) == 4
-    assert _status(c, "Gauze") == "Available"  # 10 - 2 still open = 8
+    assert _status(c, "Gauze") == "Available"
     assert _patch(c, rid, "Approved").status_code == 409  # Shipped -> Approved is not allowed
+    assert _patch(c, rid, "Cancelled").status_code == 409
 
 
 # --- availability against the real data shape -----------------------------------------
@@ -200,11 +236,15 @@ def shaped(monkeypatch, tmp_path):
     return _client_with(monkeypatch, tmp_path, rows), rows
 
 
-def _req(c, name, qty):
+def _req(c, name, qty, approve=True):
+    """Submit a request and (by default) approve it: only Approved requests hold stock."""
     r = c.post("/requests", json={"org_name": "Shape", "org_email": "shape@example.org",
                                   "items": [{"item_name": name, "quantity": qty}]})
     assert r.status_code == 200, r.text
-    return r.json()["request_id"]
+    rid = r.json()["request_id"]
+    if approve:
+        assert _patch(c, rid, "Approved").status_code == 200
+    return rid
 
 
 def _by_name(c, name):
@@ -245,7 +285,7 @@ def test_comma_quantity_with_requests(shaped):
     assert _by_name(c, "Bulk Gloves") == ["Requested"]
 
 
-def test_duplicate_names_pool_stock_once_requested(shaped):
+def test_duplicate_names_fill_rows_in_order(shaped):
     c, _ = shaped
     _req(c, "TWIN", 2)  # 3 + 4 - 2 = 5 left across both rows
     assert _by_name(c, "twin") == ["Limited", "Limited"]
@@ -343,3 +383,53 @@ def test_lot_suffix_keeps_review_flag(shaped, no_email, monkeypatch):
                               "items": [{"item_name": f"{flagged} [Lot X, Box 1, Pallet 1]", "quantity": 1}]})
     row = c.get("/requests", params={"email": email}).json()[0]
     assert row["Review Flag"] == "TRUE" and row["Item Name"].endswith("[Lot X, Box 1, Pallet 1]")
+
+
+def _remaining(c, name):
+    return [a["remaining"] for a in c.get("/inventory/availability").json()
+            if a["item_name"].lower() == name.strip().lower()]
+
+
+def test_under_review_holds_nothing(shaped):
+    c, _ = shaped
+    before = c.get("/inventory/availability").json()
+    _req(c, "Six Left", 6, approve=False)
+    assert c.get("/inventory/availability").json() == before
+
+
+def test_approved_quantity_fills_same_named_rows_first_lot_first(shaped):
+    c, _ = shaped
+    _req(c, "twin", 2)  # rows: Twin 3, twin 4
+    assert _remaining(c, "twin") == [1, 4]
+    assert _by_name(c, "twin") == ["Limited", "Limited"]
+    _req(c, "TWIN", 2)
+    assert _remaining(c, "twin") == [0, 3]
+    assert _by_name(c, "twin") == ["Requested", "Limited"]
+
+
+def test_unicode_and_spacing_variants_match(shaped):
+    c, _ = shaped
+    _req(c, "\uff33\uff49\uff58\u3000\uff2c\uff45\uff46\uff54", 6)  # full-width "Six Left"
+    assert _by_name(c, "Six Left") == ["Requested"]
+
+
+def test_approval_for_an_unknown_name_changes_nothing(shaped):
+    c, _ = shaped
+    before = c.get("/inventory/availability").json()
+    _req(c, "Nothing by this name", 5)
+    assert c.get("/inventory/availability").json() == before
+
+
+def test_negative_stock_reads_as_zero(monkeypatch, tmp_path):
+    c = _client_with(monkeypatch, tmp_path, [{"Name": "Neg", "Quantity": "-4", "Review": "No"}])
+    row = c.get("/inventory/availability").json()[0]
+    assert row["remaining"] == 0 and row["availability_status"] == "Limited"
+
+
+@pytest.mark.parametrize("status", ["Denied", "Cancelled", "Shipped"])
+def test_closed_requests_release_stock(shaped, status):
+    c, _ = shaped
+    rid = _req(c, "Six Left", 6)
+    assert _by_name(c, "Six Left") == ["Requested"]
+    assert _patch(c, rid, status).status_code == 200
+    assert _by_name(c, "Six Left") == ["Available"]

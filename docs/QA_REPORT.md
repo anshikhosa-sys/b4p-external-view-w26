@@ -7,7 +7,7 @@ Owner: qa-tester. Updated 2026-10-09. Everything here ran against local instance
 
 | Suite | Result |
 |---|---|
-| pytest (backend, all files) | 298 passed, 0 failed |
+| pytest (backend, all files) | 346 passed, 0 failed |
 | Jest (`src/*.test.js`, McMaster UI, round 3) | 400 passed, 2 skipped (live-snapshot only), 0 failed |
 | `CI=true npm run build` | Compiled successfully, no warnings |
 | Browser pass (Phase 2, Chrome, 1,137-row sample, final UI) | 30 checks passed; FE-07 to FE-10 found and fixed; console clean from page load |
@@ -270,6 +270,25 @@ Speed: first row cold 73 ms, warm 37 ms; search 105-112 ms; CLS 0; 0 images, 1 s
 - Stepper is 138 px: input 48 px, buttons 44x44 x2. 99 through 10000 fit (44 px of text in 46 px).
 - Weights are now only 400/500/600 on the landing, category, drawer, review (2 items), confirmation and My requests.
 - Budget JS 73.9 / CSS 12.9 KB; Jest 409 passed / 2 skipped.
+
+## Backend semantics change (N1/N2/N8/N9/N12)
+
+I rewrote the 14 tests that encoded the old behaviour, and added new ones. pytest: 346 passed.
+- **Holds.** Only **Approved** requests hold stock.
+  - `test_under_review_holds_nothing`: availability is byte-identical after a submit.
+  - The approved quantity fills same-named rows in order, first lot first. Two approved on rows of 3 and 4 gives `remaining` [1, 4]; two more gives [0, 3] and Requested/Limited.
+  - Full-width / NFKC / casefold names match.
+  - An approval for an unknown name changes nothing, and negative stock reads as 0.
+  - Denied, Cancelled and Shipped all release the hold.
+- **Lifecycle (sheet, DB, live sheet).**
+  - Submit: 1 clinic + 1 HQ email.
+  - The clinic email carries the request ID but no org name or item names; the HQ alert keeps the details.
+  - Approved, a repeat Approved (no-op, no email), Shipped, then Delivered (5 emails in total). After that, Shipped/Approved/Denied/Cancelled each return 409.
+- **Deny and cancel rules.**
+  - Allowed from Under Review and from Approved.
+  - 409 after Shipped and from Denied.
+  - Only values outside the five statuses return 422 (Under Review, lowercase, DENIED, empty, null, Pending, Bogus).
+- **ETag.** Unchanged (304) after a submit, and changes after Approved.
 
 ## Browser pass (McMaster layout)
 

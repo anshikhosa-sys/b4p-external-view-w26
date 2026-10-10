@@ -49,6 +49,22 @@ You need either `DATABASE_URL` or `GOOGLE_CREDENTIALS_JSON` + `GOOGLE_SHEET_ID` 
   responding, in parallel, waiting at most 5 seconds in total. A failing or slow provider never
   fails the request.
 
+## Required: rate-limit rule in the Vercel firewall
+
+The app's own rate limits live in memory, so each serverless instance counts separately. The real
+control for the public submit endpoint is Vercel's:
+
+Vercel -> Project -> Firewall -> Rate limiting rule: path `/api/requests`, method `POST`,
+10 requests per minute per IP, action deny (429). Do the same for `GET /api/requests` if your plan
+allows several rules (the lookup limit is 20 per minute per IP in the app).
+
+If your plan has no firewall rate limiting, ask for a database function
+`rate_limit_hit(key, limit, window_seconds)` to be added to the DB contract, and wire it into
+`_check_rate` in `main.py`. Do not add tables from here.
+
+On Vercel, `X-Forwarded-For` holds the real client IP (Vercel replaces what the client sent), so the
+app's last-hop rule is correct there.
+
 ## Known limitations
 
 - The rate limits and email caps are in memory, so they are per serverless instance and reset when

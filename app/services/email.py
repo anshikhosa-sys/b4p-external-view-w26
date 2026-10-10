@@ -67,16 +67,25 @@ CONFIRMATIONS_PER_ADDRESS = 3  # per rolling hour
 _sent_at: list[float] = []  # every outgoing email, for the daily cap
 _confirmed: dict[str, list[float]] = {}  # address -> confirmation times
 _submit_mail_times: list[float] = []  # mail caused by anonymous submissions (confirmation + alert)
-# Share of the daily cap anonymous submissions may use. The rest is kept for status mail, and
-# the last slice (alerts only) so HQ still hears about real requests during a flood.
+# Share of the daily cap anonymous confirmations may use. The rest is kept for status mail.
+# HQ alerts (one fixed address) are NOT part of this budget, so a flood can't blind HQ.
 CONFIRMATION_SHARE = 0.7
-ALERT_SHARE = 0.85
+CONFIRMATIONS_PER_IP = 5  # per rolling hour
+ALERTS_PER_HOUR = 30  # more than this are folded into one hourly digest
+_confirmed_by_ip: dict[str, list[float]] = {}
+_alert_times: list[float] = []
+_alerts_pending = 0  # alerts held back since the last digest
+_last_digest_at = 0.0
 
 
 def reset_limits() -> None:
     _sent_at.clear()
     _confirmed.clear()
     _submit_mail_times.clear()
+    _confirmed_by_ip.clear()
+    _alert_times.clear()
+    global _alerts_pending, _last_digest_at
+    _alerts_pending, _last_digest_at = 0, 0.0
 
 
 def _daily_limit() -> int:
@@ -113,6 +122,22 @@ def _under_submit_budget(share: float) -> bool:
     if len(_submit_mail_times) >= int(_daily_limit() * share):
         return False
     _submit_mail_times.append(now)
+    return True
+
+
+def _ip_confirmation_allowed(client_ip: str) -> bool:
+    """True (and counts it) if this client IP caused fewer than 5 confirmations in the last hour."""
+    if not client_ip:
+        return True
+    now = time.time()
+    recent = [t for t in _confirmed_by_ip.get(client_ip, []) if now - t < 3600]
+    if len(recent) >= CONFIRMATIONS_PER_IP:
+        _confirmed_by_ip[client_ip] = recent
+        return False
+    _confirmed_by_ip[client_ip] = recent + [now]
+    if len(_confirmed_by_ip) > 10000:  # keep memory bounded
+        for k in [k for k, v in _confirmed_by_ip.items() if not v or now - v[-1] >= 3600]:
+            del _confirmed_by_ip[k]
     return True
 
 
@@ -199,9 +224,10 @@ def _send(to, subject: str, html: str, text: "str | None" = None) -> bool:
     return True
 
 
-def send(to: "str | list[str]", subject: str, html: str, text: "str | None" = None) -> bool:
+def send(to: "str | list[str]", subject: str, html: str, text: "str | None" = None,
+         counts_toward_daily_limit: bool = True) -> bool:
     """Send one email. Returns True if the provider accepted it. Never raises."""
-    if not _under_daily_limit():
+    if counts_toward_daily_limit and not _under_daily_limit():
         logger.warning("EMAIL_DAILY_LIMIT (%s) reached - not sending '%s'.", _daily_limit(), _subject(subject))
         return False
     try:
@@ -268,12 +294,16 @@ def _wrap(title: str, body: str) -> str:
 </body></html>"""
 
 
-def send_org_confirmation(org_name: str, org_email: str, items: list[dict], request_id: str) -> bool:
+def send_org_confirmation(org_name: str, org_email: str, items: list[dict], request_id: str,
+                          client_ip: str = "") -> bool:
     """Confirmation to the requesting org right after submission.
 
-    Goes to an address the submitter typed, so their text is escaped and stripped of links, and
-    the subject is fixed.
+    It goes to an address the submitter typed, so it is a FIXED template: no org name, item
+    names or categories (they could carry a phishing message in our branded email).
     """
+    if not _ip_confirmation_allowed(client_ip):
+        logger.warning("Too many confirmations caused by one client IP in the last hour - skipping.")
+        return False
     if not _confirmation_allowed(org_email):
         logger.warning("Already sent %s confirmations to this address in the last hour - skipping.",
                        CONFIRMATIONS_PER_ADDRESS)
@@ -281,20 +311,21 @@ def send_org_confirmation(org_name: str, org_email: str, items: list[dict], requ
     if not _under_submit_budget(CONFIRMATION_SHARE):
         logger.warning("Confirmation share of EMAIL_DAILY_LIMIT used up - skipping confirmation.")
         return False
-    name = _no_links(org_name)
+    lines = len(items)
     html = _wrap("We received your request", f"""
-<p>Hi {_e(name)},</p>
-<p>Thanks for your supply request (<strong>{_e(str(request_id))}</strong>). You asked for:</p>
-{_items_html(items, plain=True)}
+<p>Thanks for your supply request.</p>
+<p style="margin:0 0 4px;"><strong>Request ID:</strong> {_e(str(request_id))}</p>
+<p style="margin:0 0 16px;"><strong>Items requested:</strong> {lines}</p>
 <p><strong>What happens next:</strong> our team will check availability and reply
-within 48 hours. You will get another email when the status changes.</p>
+within 48 hours. You will get another email when the status changes. You can see the
+details any time under <strong>My requests</strong> on the dashboard.</p>
 <p>If you didn't request this, you can ignore this email.</p>
 <p>Thank you,<br><strong>Blueprints HQ</strong></p>""")
-    text = (f"Hi {name},\n\nThanks for your supply request ({request_id}). You asked for:\n"
-            f"{_items_text(items, plain=True)}\n\nWhat happens next: our team will check availability and "
-            "reply within 48 hours. You will get another email when the status changes.\n\n"
-            "If you didn't request this, you can ignore this email.\n\n"
-            "Thank you,\nBlueprints HQ")
+    text = (f"Thanks for your supply request.\n\nRequest ID: {request_id}\nItems requested: {lines}\n\n"
+            "What happens next: our team will check availability and reply within 48 hours. "
+            "You will get another email when the status changes. You can see the details any time "
+            "under My requests on the dashboard.\n\n"
+            "If you didn't request this, you can ignore this email.\n\nThank you,\nBlueprints HQ")
     return send(org_email, "Your supply request has been received - Blueprints HQ", html, text)
 
 
@@ -305,8 +336,7 @@ def send_hq_alert(org_name: str, org_email: str, items: list[dict], request_id: 
     if not hq:
         logger.warning("HQ_EMAIL not set - skipping HQ alert.")
         return False
-    if not _under_submit_budget(ALERT_SHARE):
-        logger.warning("Submission share of EMAIL_DAILY_LIMIT used up - skipping HQ alert.")
+    if not _alert_slot_free(hq):
         return False
     flagged_html = flagged_text = ""
     if review_flagged:
@@ -324,18 +354,68 @@ def send_hq_alert(org_name: str, org_email: str, items: list[dict], request_id: 
 {flagged_html}""")
     text = (f"New supply request\n\nOrganization: {org_name}\nEmail: {org_email}\n"
             f"Request ID: {request_id}\n\nItems:\n{_items_text(items)}{flagged_text}")
-    return send(hq, _subject(f"New supply request from {_no_links(org_name)}"), html, text)
+    ok = send(hq, _subject(f"New supply request from {_no_links(org_name)}"), html, text,
+              counts_toward_daily_limit=False)
+    _flush_digest_if_quiet(hq)
+    return ok
 
 
-def send_status_update(org_name: str, org_email: str, status: str, items: list[dict]) -> bool:
-    """Tell the org their request changed status (Approved, Shipped, ...)."""
+def _alert_slot_free(hq: str) -> bool:
+    """HQ alerts bypass the daily cap, but after 30 an hour the rest become one digest email."""
+    global _alerts_pending, _last_digest_at
+    now = time.time()
+    _alert_times[:] = [t for t in _alert_times if now - t < 3600]
+    if len(_alert_times) < ALERTS_PER_HOUR:
+        _alert_times.append(now)
+        return True
+    _alerts_pending += 1
+    if now - _last_digest_at >= 3600:  # at most one digest per hour
+        _send_digest(hq)
+    return False
+
+
+def _flush_digest_if_quiet(hq: str) -> None:
+    """Alerts are flowing again: tell HQ about any that were held back."""
+    if _alerts_pending:
+        _send_digest(hq)
+
+
+def digest_due() -> bool:
+    """Held-back alerts exist and an hour has passed since the last digest. Cheap, no I/O."""
+    return bool(_alerts_pending) and bool(_hq_email()) and time.time() - _last_digest_at >= 3600
+
+
+def flush_digest_if_due() -> None:
+    """Send the held-back summary. There is no timer or thread (serverless has no long-lived
+    process), so the app calls this on incoming requests and after the next alert."""
+    if digest_due():
+        _send_digest(_hq_email())
+
+
+def _send_digest(hq: str) -> None:
+    global _alerts_pending, _last_digest_at
+    count, _alerts_pending, _last_digest_at = _alerts_pending, 0, time.time()
+    html = _wrap("More supply requests", f"""
+<p>{count} more supply request(s) arrived after the hourly limit of {ALERTS_PER_HOUR} individual alerts.</p>
+<p>Open the HQ view to see them all.</p>""")
+    text = (f"{count} more supply request(s) arrived after the hourly limit of {ALERTS_PER_HOUR} "
+            "individual alerts. Open the HQ view to see them all.")
+    send(hq, f"{count} more supply request(s) - Blueprints HQ", html, text, counts_toward_daily_limit=False)
+
+
+def send_status_update(org_name: str, org_email: str, status: str, items: list[dict],
+                       request_id: str = "") -> bool:
+    """Tell the org their request changed status. Fixed template, no free text from the submitter."""
+    lines = len(items)
+    ref = f" ({_e(str(request_id))})" if request_id else ""
     html = _wrap("Your request was updated", f"""
-<p>Hi {_e(org_name)},</p>
-<p>These items are now marked <strong>{_e(str(status))}</strong>:</p>
-{_items_html(items)}
-<p>If you have questions, just reply to this email.</p>
+<p>Your supply request{ref} is now <strong>{_e(str(status))}</strong>.</p>
+<p style="margin:0 0 16px;"><strong>Items in this request:</strong> {lines}</p>
+<p>See the details under <strong>My requests</strong> on the dashboard. If you have questions,
+just reply to this email.</p>
 <p>Thank you,<br><strong>Blueprints HQ</strong></p>""")
-    text = (f"Hi {org_name},\n\nThese items are now marked {status}:\n{_items_text(items)}\n\n"
+    text = (f"Your supply request{f' ({request_id})' if request_id else ''} is now {status}.\n"
+            f"Items in this request: {lines}\n\nSee the details under My requests on the dashboard. "
             "If you have questions, just reply to this email.\n\nThank you,\nBlueprints HQ")
     return send(org_email, _subject(f"Update on your supply request - {status}"), html, text)
 

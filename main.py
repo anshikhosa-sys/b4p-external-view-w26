@@ -1,5 +1,8 @@
 import concurrent.futures
 import hashlib
+import ipaddress
+import unicodedata
+from collections import OrderedDict
 import hmac
 import json
 import logging
@@ -99,6 +102,15 @@ def _check_configured() -> None:
 app.router.dependencies.append(Depends(_check_configured))  # runs before every route
 
 
+def _flush_alert_digest(tasks: BackgroundTasks) -> None:
+    """Opportunistic: the HQ digest has no timer, so any request after the hour sends it."""
+    if email_svc.digest_due():
+        _deliver(tasks, (email_svc.flush_digest_if_due,))
+
+
+app.router.dependencies.append(Depends(_flush_alert_digest))
+
+
 def _get_google_creds() -> Credentials:
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -169,7 +181,8 @@ def require_hq(x_hq_token: Optional[str] = Header(default=None)) -> None:
 # Simple per-IP rate limit for anonymous writes (in memory, per process). To remove it,
 # delete this block and the `Depends(rate_limit_post)` on POST /requests.
 RATE_LIMIT = 10  # requests per IP per minute
-_hits: dict[str, list[float]] = {}
+_hits: "OrderedDict[str, list[float]]" = OrderedDict()  # least recently used first; capped in _check_rate
+MAX_RATE_KEYS = 10000
 
 
 _warned_xff = False
@@ -197,7 +210,19 @@ def _client_ip(request: Request) -> str:
             logger.warning("X-Forwarded-For received but proxy trust is off, so all users may share one "
                            "rate limit. If you are behind a proxy, set TRUST_PROXY=1.")
         fwd = ""
-    return fwd.split(",")[-1].strip() or (request.client.host if request.client else "?")
+    ip = fwd.split(",")[-1].strip() or (request.client.host if request.client else "?")
+    return _ip_bucket(ip)
+
+
+def _ip_bucket(ip: str) -> str:
+    """One IPv6 /64 is a single customer's allocation, so share one bucket per /64."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if addr.version == 6:
+        return str(ipaddress.ip_network(f"{addr}/64", strict=False))
+    return ip
 
 
 def _check_rate(key: str, limit: int) -> None:
@@ -205,12 +230,13 @@ def _check_rate(key: str, limit: int) -> None:
     recent = [t for t in _hits.get(key, []) if now - t < 60]
     if len(recent) >= limit:
         _hits[key] = recent
+        _hits.move_to_end(key)
         raise HTTPException(status_code=429, detail="Too many requests. Try again in a minute.")
     recent.append(now)
     _hits[key] = recent
-    if len(_hits) > 10000:  # keep memory bounded
-        for k in [k for k, v in _hits.items() if not v or now - v[-1] >= 60]:
-            del _hits[k]
+    _hits.move_to_end(key)
+    while len(_hits) > MAX_RATE_KEYS:  # bounded memory even under a flood of distinct keys
+        _hits.popitem(last=False)
 
 
 def rate_limit_post(request: Request) -> None:
@@ -483,7 +509,7 @@ EMAIL_RE = re.compile(r"^[^@\s<>\"]+@[^@\s<>\"]+\.[^@\s<>\"]+$")
 class OrgCartItemIn(BaseModel):
     item_name: str = Field(min_length=1, max_length=500)
     category: str = Field(default="", max_length=200)
-    quantity: int = Field(ge=1, le=10000)
+    quantity: int = Field(strict=True, ge=1, le=10000)  # the DB contract wants a JSON number
     sheet_row: Optional[int] = Field(default=None, ge=2, le=500000)
 
     @field_validator("item_name")
@@ -517,17 +543,22 @@ class OrgRequestBody(BaseModel):
 
 
 class StatusUpdateBody(BaseModel):
-    status: Literal["Approved", "Shipped"]
+    status: Literal["Approved", "Shipped", "Delivered", "Denied", "Cancelled"]
 
 
-# Same order the database enforces in set_request_status(): a request only moves forward.
+# Same rules the database enforces in set_request_status(): a request only moves forward, and can be
+# Denied or Cancelled only while it is Under Review or Approved.
 STATUS_ORDER = ["Under Review", "Approved", "Shipped", "Delivered"]
 
 
 def _check_transition(current: set[str], new: str) -> None:
-    """409 unless every line can move forward to `new` (lines already at `new` are fine)."""
+    """409 unless every line can move to `new` (lines already at `new` are fine)."""
     for old in current - {new}:
-        if old not in STATUS_ORDER or STATUS_ORDER.index(old) > STATUS_ORDER.index(new):
+        if new in ("Denied", "Cancelled"):
+            allowed = old in ("Under Review", "Approved")
+        else:
+            allowed = old in STATUS_ORDER and STATUS_ORDER.index(old) < STATUS_ORDER.index(new)
+        if not allowed:
             raise HTTPException(status_code=409, detail="That status change is not allowed.")
 
 
@@ -594,11 +625,15 @@ def _base_item_name(name: str) -> str:
     return LOT_SUFFIX_RE.sub("", name.strip(), count=1)
 
 
+def _norm_name(name: str) -> str:
+    """Compare item names ignoring case, padding, inner whitespace and NBSP-style variants."""
+    return " ".join(unicodedata.normalize("NFKC", name).casefold().split())
+
+
 def _review_flag(inventory: list[dict], item_name: str) -> bool:
-    needle = _base_item_name(item_name).lower()
+    needle = _norm_name(_base_item_name(item_name))
     for rec in inventory:
-        name = (rec.get("Name") or rec.get("name") or "").strip().lower()
-        if name == needle:
+        if _norm_name(rec.get("Name") or rec.get("name") or "") == needle:
             review = (rec.get("Review") or "").strip()
             return review.lower() in ("review needed", "yes")
     return False
@@ -638,14 +673,14 @@ def _deliver(tasks: BackgroundTasks, *jobs: tuple) -> None:
 
 
 def _queue_submit_emails(tasks: BackgroundTasks, body: OrgRequestBody, request_id: str,
-                         flagged: list[str]) -> None:
+                         flagged: list[str], client_ip: str = "") -> None:
     """Confirmation + HQ alert run after the response, so a slow provider never blocks users."""
     if os.environ.get("EMAIL_ON_SUBMIT", "true").strip().lower() in ("false", "0", "no", "off"):
         return
     items = [{"item_name": i.item_name, "category": i.category, "quantity": i.quantity}
              for i in body.items]
     _deliver(tasks,
-             (email_svc.send_org_confirmation, body.org_name, body.org_email, items, request_id),
+             (email_svc.send_org_confirmation, body.org_name, body.org_email, items, request_id, client_ip),
              (email_svc.send_hq_alert, body.org_name, body.org_email, items, request_id, flagged))
 
 
@@ -659,8 +694,9 @@ def _review_flags(body: OrgRequestBody) -> list[bool]:
 
 
 @app.post("/requests")
-def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks,
+def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Request,
                        _rl: None = Depends(rate_limit_post)):
+    client_ip = _client_ip(request)
     if db.enabled():
         flags = _review_flags(body)
         request_id = db.create_request(body.org_name, body.org_email, [
@@ -669,7 +705,7 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks,
             for i, flag in zip(body.items, flags)
         ])
         _queue_submit_emails(tasks, body, request_id,
-                             [i.item_name for i, flag in zip(body.items, flags) if flag])
+                             [i.item_name for i, flag in zip(body.items, flags) if flag], client_ip)
         return {"request_id": request_id, "status": "Under Review"}
 
     flags = _review_flags(body)
@@ -685,7 +721,7 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks,
                 "Category": item.category, "Quantity Requested": str(item.quantity),
                 "Status": "Under Review", "Timestamp": ts, "Review Flag": "TRUE" if flag else "FALSE",
             })
-        _queue_submit_emails(tasks, body, request_id, flagged)
+        _queue_submit_emails(tasks, body, request_id, flagged, client_ip)
         return {"request_id": request_id, "status": "Under Review", "message": "USE_SAMPLE_DATA mode."}
 
     request_id = _make_request_id()
@@ -706,7 +742,7 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks,
     ws = _org_requests_worksheet(spreadsheet)
     ws.append_rows(batch, value_input_option="RAW")
 
-    _queue_submit_emails(tasks, body, request_id, flagged)
+    _queue_submit_emails(tasks, body, request_id, flagged, client_ip)
     return {"request_id": request_id, "status": "Under Review"}
 
 
@@ -720,7 +756,14 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
             return {"request_id": request_id, "status": body.status, "changed": False}
         try:
             found = db.set_request_status(request_id, body.status)
-        except (psycopg.errors.RaiseException, psycopg.errors.CheckViolation):
+        except psycopg.errors.NoDataFound:  # SQLSTATE P0002: unknown id
+            raise HTTPException(status_code=404, detail=f"Request ID '{request_id}' not found.")
+        except psycopg.errors.RaiseException as exc:
+            # "cannot change request ..." is a refused transition; anything else is bad input (400).
+            if str(exc).startswith("cannot change request"):
+                raise HTTPException(status_code=409, detail="That status change is not allowed.")
+            raise
+        except psycopg.errors.CheckViolation:
             raise HTTPException(status_code=409, detail="That status change is not allowed.")
         if not found:
             raise HTTPException(status_code=404, detail=f"Request ID '{request_id}' not found.")
@@ -730,7 +773,8 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
                 for r in rows
             ]
             _deliver(tasks, (email_svc.send_status_update, rows[0]["Org Name"], rows[0]["Org Email"],
-                             body.status, items))
+                             body.status, items, request_id))
+        _inventory_cache.clear()
         return {"request_id": request_id, "status": body.status}
 
     if _use_sample_data():
@@ -743,11 +787,12 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
         _check_transition(current, body.status)
         for row in rows:
             row["Status"] = body.status
+        _inventory_cache.clear()
         if rows[0]["Org Email"]:
             items = [{"item_name": r["Item Name"], "category": r["Category"],
                       "quantity": r["Quantity Requested"]} for r in rows]
             _deliver(tasks, (email_svc.send_status_update, rows[0]["Org Name"], rows[0]["Org Email"],
-                             body.status, items))
+                             body.status, items, request_id))
         return {"request_id": request_id, "status": body.status, "updated_rows": len(rows)}
 
     spreadsheet = _open_requests_spreadsheet()
@@ -802,8 +847,9 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
         for r in matching_sheet_rows
     ])
 
+    _inventory_cache.clear()  # HQ sees the effect on this instance at once (others: within 60s)
     if org_email:
-        _deliver(tasks, (email_svc.send_status_update, org_name, org_email, body.status, items))
+        _deliver(tasks, (email_svc.send_status_update, org_name, org_email, body.status, items, request_id))
 
     return {"request_id": request_id, "status": body.status}
 
@@ -833,48 +879,48 @@ async def inventory_availability(request: Request):
         except Exception:
             pass
 
-    # Availability = stock minus what open requests (Under Review / Approved) already ask for.
-    # Shipped requests are not counted: HQ is expected to have taken shipped stock out of the
-    # inventory quantity, so they no longer brand the item. Requests are matched by item name.
-    open_by_name: dict[str, int] = {}
+    # Availability = stock minus what HQ has Approved. Under Review requests are anonymous and
+    # unvetted, so they must not change what other clinics see. Shipped stock is assumed to have
+    # been taken out of the inventory quantity by HQ. Requests are matched by normalized item name.
+    approved_by_name: dict[str, int] = {}
     for r in org_requests:
-        if r.get("Status", "").strip() in ("Under Review", "Approved"):
-            key = _base_item_name(r.get("Item Name", "")).lower()
+        if r.get("Status", "").strip() == "Approved":
+            key = _norm_name(_base_item_name(r.get("Item Name", "")))
             try:
-                open_by_name[key] = open_by_name.get(key, 0) + int(str(r.get("Quantity Requested", "0")).strip())
+                qty_asked = int(str(r.get("Quantity Requested", "0")).strip())
             except ValueError:
-                open_by_name[key] = open_by_name.get(key, 0) + 1
+                qty_asked = 1
+            approved_by_name[key] = approved_by_name.get(key, 0) + max(qty_asked, 0)
 
     def _qty(rec: dict) -> Optional[int]:
         try:
             # float() first: Sheets can export whole numbers as "12.0"
-            return int(float(str(rec.get("Quantity") or rec.get("quantity") or "").strip().replace(",", "")))
+            return max(int(float(str(rec.get("Quantity") or rec.get("quantity") or "").strip().replace(",", ""))), 0)
         except (ValueError, OverflowError):
             return None
 
-    stock_by_name: dict[str, int] = {}
-    for rec in inventory:
-        key = (rec.get("Name") or rec.get("name") or "").strip().lower()
-        stock_by_name[key] = stock_by_name.get(key, 0) + (_qty(rec) or 0)
-
+    # Spread each name's approved quantity over its inventory rows in order (first lot first),
+    # so a small lot reads 0 after a small approval and a big lot is not reduced by it.
+    left_to_hold = dict(approved_by_name)
     result = []
     for rec in inventory:
         item_name = (rec.get("Name") or rec.get("name") or "").strip()
         category = (rec.get("Category") or rec.get("category") or "").strip()
         sheet_row = rec.get("_sheet_row")
         qty = _qty(rec)
-        needle = item_name.lower()
-        open_qty = open_by_name.get(needle, 0)
+        key = _norm_name(item_name)
+        held = 0
+        if qty is not None and left_to_hold.get(key):
+            held = min(qty, left_to_hold[key])
+            left_to_hold[key] -= held
 
         if qty is None:  # blank or unparseable stock: unknown, not low
             remaining = None
-        elif open_qty:
-            remaining = max(stock_by_name.get(needle, 0) - open_qty, 0)
         else:
-            remaining = qty
+            remaining = qty - held
         if remaining is None:
             availability_status, tags = "Available", ["Available"]
-        elif open_qty and remaining <= 0:
+        elif approved_by_name.get(key) and remaining <= 0:
             availability_status, tags = "Requested", ["Requested"]
         elif remaining <= 5:
             availability_status, tags = "Limited", ["Low Stock"]

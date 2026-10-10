@@ -63,16 +63,22 @@ Both HTTP providers use HTTPS, which Render allows.
 `POST /requests` is public and emails the address the submitter types, so there are two in-memory caps
 (reset on restart):
 
-- At most 3 confirmation emails per address per rolling hour (case-insensitive).
-- `EMAIL_DAILY_LIMIT` (default 200) emails per rolling 24 hours across everything the server sends.
-  Mail caused by anonymous submissions is limited further so it cannot starve status emails:
-  confirmations stop at 70% of the limit, and confirmations plus HQ alerts stop at 85%.
-- Address aliases count as one address: case, `+tag`, dots in Gmail addresses and `googlemail.com`.
-- Confirmations never contain links: URLs and domains typed into the org or item names are replaced
-  with `[link removed]`, and the subject is fixed.
+- At most 3 confirmation emails per address per rolling hour, and 5 per client IP per hour. Address aliases
+  count as one address: case, `+tag`, dots in Gmail addresses and `googlemail.com`.
+- `EMAIL_DAILY_LIMIT` (default 200) emails per rolling 24 hours. Confirmations stop at 70% of it, so
+  anonymous traffic cannot use up the status emails.
+- HQ alerts (one fixed address) are not part of that budget, so a flood cannot blind HQ. After 30 alerts
+  in an hour, the rest are folded into one digest email ("N more supply requests"). There is no timer or
+  background thread (serverless has no long-lived process): the digest is sent by the next alert after
+  the hour, or by any incoming request once an hour has passed since the last digest. Nothing guarantees
+  delivery if the whole server gets no requests, or if the instance holding the count is recycled first;
+  the requests themselves are always saved and visible in the HQ view.
+- Confirmation and status emails are fixed templates: request ID, number of items and (for status) the
+  new status. They never contain the org name, item names or categories, because they go to an address
+  the submitter typed and could otherwise carry a phishing message. The HQ alert has the details.
 
 When a cap is hit the request is still saved and the email is skipped with a logged warning.
-Only the daily cap stops the HQ alert.
+
 
 On Vercel the abuse limits are per serverless instance (see [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md)), so
 they are softer than the numbers above. Email is also sent before the response there (waiting at most
@@ -90,7 +96,7 @@ they are softer than the numbers above. Email is also sent before the response t
 | No emails on submit, status emails work | `EMAIL_ON_SUBMIT=false` | Remove it or set it to `true`. |
 | Emails land in spam | Unverified domain or generic sender | Use Resend with a verified domain (SPF/DKIM), or ask recipients to mark "not spam". |
 | SMTP works locally, not on Render | Render blocks SMTP ports | Use Brevo or Resend there. |
-| Confirmation not received | The address already got 3 confirmations in the last hour, or the daily cap was hit | Expected abuse protection (see below). The request is still saved and HQ is still alerted unless the daily cap is hit. Wait an hour, or raise `EMAIL_DAILY_LIMIT`. The log says which cap fired. |
+| Confirmation not received | The address already got 3 confirmations in the last hour, or the daily cap was hit | Expected abuse protection (see below). The request is still saved and HQ is still alerted. Wait an hour, or raise `EMAIL_DAILY_LIMIT`. The log says which cap fired. |
 | Status email not sent | Status did not actually change, or the org has no email on file | Expected; only real changes email. |
 
 ## Change the templates
@@ -99,7 +105,7 @@ All three are functions in `app/services/email.py`: `send_org_confirmation`, `se
 `send_status_update`. Each builds an HTML body and a plain-text copy; edit both. The shared
 layout (header colour, width) is `_wrap()`. Rules to keep:
 
-- Escape every user-provided value with `_e(...)` in HTML. Never paste raw text into HTML.
+- Escape every user-provided value with `_e(...)` in HTML. Never paste raw text into HTML, and keep submitter text out of mail that goes to the submitter (only the HQ alert shows it).
 - Keep styles inline (email clients ignore `<style>` blocks).
 - Pass subjects through `_subject()` so line breaks cannot inject headers.
 

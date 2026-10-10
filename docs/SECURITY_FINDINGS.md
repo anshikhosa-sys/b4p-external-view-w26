@@ -401,3 +401,52 @@ real `<App/>` on `#/` with bad JSON, non-arrays, `{"__proto__":1}`, mixed or pro
   requests. The CSP guard is conditional and needed no change: it requires `'unsafe-inline'` only while inline styles exist,
   and it still fails on any inline `<script>`. `'unsafe-inline'` in `style-src` is no longer needed for `index.html`; React
   `style={}` props use the CSSOM, which `style-src` does not block. It could be dropped after a browser check.
+
+## External red-team findings N1-N12 (session vishnavramesh-3a) — reproduced 2026-10-10
+
+Reproduced on the current Vish-F26 code, sample mode, email `_send` stubbed (no mail leaves). Each has a strict-xfail
+regression in `tests/test_exploits.py`; the lead's decision is recorded as the intended fix. N4-N7, N10, N11 were not in the
+handed-off batch. Full suite: 310 passed, 9 xfailed.
+
+| ID | Sev | Component | Status | Test |
+|----|-----|-----------|--------|------|
+| N1 | High | `email.py` daily budget vs HQ alerts | Open | `test_hq_alerts_survive_email_budget_exhaustion` |
+| N2 | High | `email.py` confirmation + status templates | Open | `test_confirmation_and_status_emails_have_no_free_text` |
+| N3 | Medium | `main.py` `_check_rate` / `_client_ip` | Open | `test_rate_limit_buckets_ipv6_by_64`, `test_rate_limit_table_is_bounded` |
+| N8 | Medium | `main.py` `/inventory/availability` | Open | `test_under_review_request_does_not_change_availability` |
+| N9 | Medium | `main.py` availability name/qty math | Open | `test_availability_duplicate_name_rows_are_per_row`, `_negative_quantity_is_clamped`, `_matches_normalized_name` |
+| N12 | Low | `main.py` `StatusUpdateBody` | Open | `test_status_update_allows_db_statuses` |
+
+**N1 — anonymous flood blinds HQ (High).** HQ new-request alerts share the global `EMAIL_DAILY_LIMIT` with anonymous
+confirmations (both go through `send()` -> `_under_daily_limit()`, and alerts also spend `_under_submit_budget(ALERT_SHARE)`).
+With `EMAIL_DAILY_LIMIT=6`, 4 anonymous submissions exhaust the budget and the next genuine request produces no HQ alert. At
+the default 200, ~85-110 submissions (one IP for ~9 min, or rotating IPs) silence all mail for 24h, including HQ alerts.
+**Decision:** HQ alerts (one fixed address, can't be used to spam others) are never blocked by the global budget; batch them —
+after 30 alerts/hour, send one hourly digest "N more requests" instead. Confirmations also get a per-IP cap (5/hour).
+
+**N2 — phishing via confirmation and status emails (High).** `category` is not run through `_no_links`, so
+`category="see evil.test"` reaches the confirmation sent to the attacker-chosen address. `send_status_update` applies no
+`_no_links` at all, so `org_name` text/links reach the status email. Confirmed: both bodies contained `evil.test`.
+**Decision:** confirmation and status emails become fixed templates with NO free text — request ID, number of lines, status,
+and "see My requests on the dashboard". No org name, item names or category.
+
+**N3 — rate-limit bypass and unbounded table (Medium).** `_client_ip` keys on the full address, so 15 addresses in one IPv6
+/64 (one customer allocation) each get their own 10/min bucket (0 of 15 limited). `_check_rate` cleanup only drops idle keys,
+so 50,000 distinct spoofed keys within 60s leave `_hits` at 50,000 entries. Last-hop XFF under `TRUST_PROXY` is correct only if
+Render appends the real client IP as the last hop (confirmed by the lead that the live bundle relies on that); keep it only
+behind Render. **Decision:** bucket IPv6 by /64, LRU-cap `_hits` at 10k, keep last-hop trust only behind Render.
+
+**N8 — one request flips availability for everyone (Medium).** Availability subtracts Under Review + Approved open quantity, so
+one anonymous 10000-unit request (max per line) marks the item Requested/0 for every clinic, before any HQ review.
+**Decision:** only HQ-Approved requests hold stock; Under Review requests don't change availability. Update the README
+(availability wording).
+
+**N9 — availability math (Medium).** (a) Open quantity is pooled across all rows sharing a name and subtracted from each row, so
+after a 1-unit approval on a (1 + 100) duplicate-name pair, the 1-unit lot reads `remaining` 100 (grew). (b) A raw Quantity of
+`-5` shows `remaining: -5`. (c) Name matching is `strip().lower()` only, so a request whose item name differs by inner
+whitespace / NBSP / case does not match its inventory row. **Decision:** per-row subtraction, clamp at 0, and Unicode NFKC +
+whitespace/punctuation normalization for name matching.
+
+**N12 — status model narrower than the DB (Low).** `StatusUpdateBody` is `Literal["Approved", "Shipped"]`, but the DB supports
+Delivered/Denied/Cancelled; a PATCH with those returns 422, so HQ can't record them via the API. **Decision:** allow
+Delivered/Denied/Cancelled with the DB's transition rules.
