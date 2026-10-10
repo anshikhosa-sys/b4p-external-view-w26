@@ -32,16 +32,18 @@ Pv = Preview, both = P and Pv.
 | `EMAIL_REPLY_TO`, `EMAIL_ON_SUBMIT`, `EMAIL_DAILY_LIMIT` | P, optional | See [EMAIL.md](EMAIL.md). |
 
 Vercel sets `VERCEL`, `VERCEL_ENV` (`production`, `preview`, `development`) by itself. Do not set
-`USE_SAMPLE_DATA` or `TRUST_PROXY` in Vercel: proxy trust is already on there so the rate limit sees
-the real client IP.
+`USE_SAMPLE_DATA` or `TRUST_PROXY` in Vercel. The rate limit takes the client IP from Vercel's
+`x-vercel-forwarded-for` header (which clients cannot set), then the last `X-Forwarded-For` hop, then the socket address.
+The API docs (`/api/docs`) are off on Vercel; `ENABLE_API_DOCS=1` turns them on.
 
 You need either `DATABASE_URL` or `GOOGLE_CREDENTIALS_JSON` + `GOOGLE_SHEET_ID` in Production.
 
 ## Safety behaviour
 
-- **Preview with no secrets:** if neither `DATABASE_URL` nor `GOOGLE_CREDENTIALS_JSON` is set, the
-  deploy runs on `sample_inventory.json` with email turned off, so previews work without secrets.
-  Requests made on a preview are kept in memory only.
+- **Previews are always sandboxed:** with `VERCEL_ENV=preview` the app uses `sample_inventory.json`, keeps
+  requests in memory and sends no email, even if `DATABASE_URL`, Google credentials or email keys are
+  visible to Preview. `PREVIEW_ALLOW_REAL_DATA=true` turns the sandbox off; don't. Still scope
+  `DATABASE_URL`, `GOOGLE_CREDENTIALS_JSON` and the email keys to Production only.
 - **Production never uses demo data:** with no `DATABASE_URL` and no credentials, every endpoint
   (including `/api/health`) returns `503 Server is not configured`. `USE_SAMPLE_DATA` is ignored in
   production.
@@ -67,9 +69,10 @@ app's last-hop rule is correct there.
 
 ## Known limitations
 
-- The rate limits and email caps are in memory, so they are per serverless instance and reset when
-  an instance is recycled. Under heavy abuse the effective limits are higher than configured. A
-  possible follow-up is keeping the counters in Postgres.
+- **The in-memory limits are best-effort on serverless.** Each instance counts on its own, so the real
+  protection is the firewall rule above. A shared counter (Upstash Redis or Vercel KV) is a possible
+  future option; there is no such dependency today.
+
 - The inventory cache (60 seconds) is per instance too. That only costs extra Sheets reads.
 - Function limit: `maxDuration` is 15 seconds (set in `vercel.json`).
 

@@ -450,3 +450,61 @@ whitespace/punctuation normalization for name matching.
 **N12 — status model narrower than the DB (Low).** `StatusUpdateBody` is `Literal["Approved", "Shipped"]`, but the DB supports
 Delivered/Denied/Cancelled; a PATCH with those returns 422, so HQ can't record them via the API. **Decision:** allow
 Delivered/Denied/Cancelled with the DB's transition rules.
+
+## Vercel serverless migration — security pass (2026-10-10)
+
+Reviewed commit c6b9966 (api/index.py mounts main.app under /api; vercel.json functions + rewrite; .vercelignore; inline email
+on VERCEL; preview -> sample mode; production 503 guard; proxy trust on VERCEL). Local only; Google blocked, no DB, email stubbed.
+N1-N12 fixes (cfea031/53a26fa) are in and their 9 regressions pass. Verified working: the production 503 guard fires for every
+route and is not bypassed by USE_SAMPLE_DATA or VERCEL_ENV casing/whitespace; preview with no secrets serves sample data with email
+off; inline email returns within the 5s budget (well under maxDuration 15s) even when the provider hangs.
+
+| ID | Sev | Finding | Status |
+|----|-----|---------|--------|
+| V1 | Low-Med | OpenAPI docs/schema served in production | Open (test) |
+| V2 | Low | .vercelignore misses common secret filenames | Open (test) |
+| V-PREVIEW | Medium | preview isolation depends on env vars being production-scoped | Open (config, not code) |
+| V-STATE | Medium | in-memory rate limits / email caps are per-instance on serverless | Open (architectural) |
+| V3 | Info | X-Forwarded-For trust behind Vercel's proxy | Verify in prod |
+
+**V1 — docs exposed in production.** `/api/docs`, `/api/openapi.json`, `/api/redoc` all return 200 in every mode (the docs
+routes bypass the `_check_configured` 503 guard). The schema lists every route and names the `X-HQ-Token` auth header, which helps
+an attacker. Fix: create `main.app` with `docs_url=None, redoc_url=None, openapi_url=None` in production (keep them in
+preview/dev if wanted). Test: `test_api_docs_not_exposed_in_production` (strict xfail).
+
+**V2 — .vercelignore is name-specific.** `gcreds.json` and `.env` are excluded (good), and neither is tracked in git, so the
+Git-integration deploy path is clean. But a `vercel` CLI upload would include `.env.local`, `.env.production`, `credentials.json`,
+`*.pem`, `*.key`, `gcreds.json.bak`, etc. None exist today (`.env.example` holds only empty placeholders), so nothing leaks now;
+harden the patterns to globs (`.env*`, `*.pem`, `*.key`, `*credential*`, `*service*account*`) so a future secret file can't ship.
+The serverless function bundle itself is scoped by `includeFiles` to `{main.py,app/**,sample_inventory.json}`, so the function
+never includes secrets regardless. Test: `test_vercelignore_excludes_all_common_secret_files` (strict xfail).
+
+**V-PREVIEW — preview sandboxing depends on env scoping.** `_auto_sample_preview()` returns true (sample data, email off) only when
+`VERCEL_ENV=preview` AND both `DATABASE_URL` and `GOOGLE_CREDENTIALS_JSON` are unset. If the Vercel project sets those for *all*
+environments (the default unless an env var is scoped to Production only), preview and branch deploys will talk to the production
+database and send real email. Action: in Vercel, scope DATABASE_URL, GOOGLE_CREDENTIALS_JSON, and every email provider key to the
+Production environment only, or give previews their own throwaway values. This is config, not code; I can't verify it locally.
+
+**V-STATE — in-memory limits on serverless.** `_hits` (rate limit), `_confirmed`/`_sent_at`/`_alert_times` (email caps) and the
+digest counters are module globals, i.e. per warm instance. Vercel runs many short-lived instances and cold-starts freely, so each
+gets its own empty counters: the 10/min POST limit, the 20/min lookup limit, the 5/hour confirmation cap, the daily budget and the
+30/hour alert digest are all far weaker in production than the tests (single process) show. The EXP-02/06/07 and N1/N3 mitigations
+therefore partly regress on serverless. Fix or accept: back these with a shared store (Vercel KV / Upstash Redis), or document that
+the limits are best-effort per instance. Not locally testable.
+
+**V3 — X-Forwarded-For behind Vercel.** `_trust_proxy()` trusts the last XFF hop whenever `VERCEL` is set. That is safe only if
+Vercel's proxy overwrites inbound XFF with the real client IP (it normally does, and also sets the unspoofable
+`x-vercel-forwarded-for`). If a config ever let a client-supplied XFF pass through, the last-hop logic (and the /64 bucket on it)
+would be bypassable. Can't verify without a live Vercel deploy (out of scope). Recommend reading `x-vercel-forwarded-for` when
+`VERCEL` is set, since the client cannot spoof it. The first preview build of c6b9966 failed (logs not yet available); re-check this
+once a preview is reachable.
+
+**Note (pre-existing, not Vercel-specific):** `GET /api/requests` (internal clinic requests, now reachable at `/api/api/requests`)
+has no auth and returns the whole internal Requests tab. It was equally reachable on Render. Confirm with the team whether that
+endpoint should be HQ-gated.
+
+**Incident (my error, contained):** an early version of my probe used `os.environ.pop()` to clear credentials, but `main.py`'s
+`load_dotenv()` re-read them from `.env`, so two inventory reads and two (failed, 502) write attempts reached the real Google
+Sheet. Reported to main/the user to check the org Requests tab. No email was sent (provider keys blank, `_send` stubbed). Now
+prevented in-repo by commit bd2550f (`load_dotenv(override=False)`, skipped on Vercel/Render) and the `no_google_sheets` conftest
+guard; my probes now set empty-string env vars and hard-block the Google client.

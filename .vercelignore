@@ -1,7 +1,18 @@
 # Keep secrets and bulk out of the upload; the function only needs main.py, app/ and sample_inventory.json.
-gcreds.json
-.env
+# Globs, so a new secret file with a common name can't ship by accident.
+.env*
+!.env.example
+*.pem
+*.key
+*.p12
+*credentials*.json
+*credential*
+*service*account*
+*gcreds*
+id_rsa*
+.git
 .venv
+/node_modules
 tests
 scripts
 docs

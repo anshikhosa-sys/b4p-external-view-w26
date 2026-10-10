@@ -10,8 +10,14 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 
+def preview_sandboxed() -> bool:
+    """Vercel preview deploys use demo data, never the real database or sheet, unless explicitly allowed."""
+    return (os.environ.get("VERCEL_ENV", "").strip().lower() == "preview"
+            and os.environ.get("PREVIEW_ALLOW_REAL_DATA", "").strip().lower() != "true")
+
+
 def enabled() -> bool:
-    return bool(os.environ.get("DATABASE_URL", "").strip())
+    return bool(os.environ.get("DATABASE_URL", "").strip()) and not preview_sandboxed()
 
 
 def _connect():

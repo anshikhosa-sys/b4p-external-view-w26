@@ -40,7 +40,15 @@ SAMPLE_PATH = Path(os.environ.get("SAMPLE_INVENTORY_PATH") or BASE_DIR / "sample
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+def _docs_disabled() -> bool:
+    """API docs list every route and the HQ header: off on deployed servers unless ENABLE_API_DOCS=1."""
+    deployed = (bool(os.environ.get("VERCEL") or os.environ.get("RENDER"))
+                or os.environ.get("VERCEL_ENV", "").strip().lower() == "production")
+    return deployed and os.environ.get("ENABLE_API_DOCS", "").strip() != "1"
+
+
+_NO_DOCS = {"docs_url": None, "redoc_url": None, "openapi_url": None} if _docs_disabled() else {}
+app = FastAPI(**_NO_DOCS)
 
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
 app.add_middleware(GZipMiddleware, minimum_size=1000)  # inventory JSON is ~134 KB raw
@@ -81,9 +89,9 @@ def _has_google_creds() -> bool:
 
 
 def _auto_sample_preview() -> bool:
-    """Vercel preview deploys with no secrets run on the demo inventory, with email off."""
-    return (_vercel_env() == "preview" and not os.environ.get("DATABASE_URL", "").strip()
-            and not os.environ.get("GOOGLE_CREDENTIALS_JSON"))
+    """Preview deploys never touch real data or send email, even if secrets are in their scope,
+    unless PREVIEW_ALLOW_REAL_DATA=true."""
+    return db.preview_sandboxed()
 
 
 def _use_sample_data() -> bool:
@@ -103,6 +111,16 @@ def _check_configured() -> None:
 
 
 app.router.dependencies.append(Depends(_check_configured))  # runs before every route
+
+_DOC_PATHS = ("/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect")
+
+
+@app.middleware("http")
+async def _hide_api_docs_in_production(request: Request, call_next):
+    """Same rule at request time, in case the environment changes after import (tests, hot config)."""
+    if _docs_disabled() and request.url.path.rstrip("/").endswith(_DOC_PATHS):
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+    return await call_next(request)
 
 
 def _flush_alert_digest(tasks: BackgroundTasks) -> None:
@@ -206,6 +224,11 @@ def _client_ip(request: Request) -> str:
     Render's proxy appends the real client IP as the LAST hop, so we use that one.
     """
     global _warned_xff
+    if os.environ.get("VERCEL"):
+        # Vercel sets this one itself; unlike X-Forwarded-For the client cannot add to it.
+        first = request.headers.get("x-vercel-forwarded-for", "").split(",")[0].strip()
+        if first:
+            return _ip_bucket(first)
     fwd = request.headers.get("x-forwarded-for", "")
     if fwd and not _trust_proxy():
         if not _warned_xff and request.client and request.client.host not in ("testclient", "127.0.0.1"):
@@ -402,11 +425,15 @@ def _snapshot_row(inventory: list[dict], sheet_row: int) -> Optional[dict]:
     return None
 
 
+def _health_email():
+    return None if _auto_sample_preview() else email_svc.provider_name()
+
+
 @app.get("/health")
 def health():
     if db.enabled():
-        return {"source": "postgres", "ok": db.ping(), "email": email_svc.provider_name()}
-    return {"source": "sheet", "ok": True, "email": email_svc.provider_name()}
+        return {"source": "postgres", "ok": db.ping(), "email": _health_email()}
+    return {"source": "sheet", "ok": True, "email": _health_email()}
 
 
 PUBLIC_CACHE = "public, max-age=60, stale-while-revalidate=300"
@@ -432,7 +459,7 @@ async def supplies(request: Request):
     return _cached_json(request, rows)
 
 
-@app.get("/api/requests")
+@app.get("/api/requests", dependencies=[Depends(require_hq)])  # the whole internal tab: HQ only
 async def list_requests():
     if _use_sample_data():
         return []

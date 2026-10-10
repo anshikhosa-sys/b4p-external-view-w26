@@ -119,14 +119,24 @@ def test_preview_without_secrets_uses_demo_data_and_sends_no_email(vercel_client
     assert no_email == []
 
 
-def test_preview_with_credentials_does_not_fall_back(monkeypatch):
+def test_preview_is_sandboxed_even_when_real_secrets_are_in_scope(vercel_client, no_email, monkeypatch):
     import main
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@127.0.0.1:1/none")
+    monkeypatch.setenv("GOOGLE_CREDENTIALS_JSON", "{}")
+    monkeypatch.setenv("BREVO_API_KEY", "k")
+    monkeypatch.setenv("HQ_EMAIL", "hq@example.org")
+    assert main._use_sample_data() is True and main.db.enabled() is False
+    assert vercel_client.post("/api/requests", json=BODY).status_code == 200  # saved to memory, not the DB
+    assert no_email == [] and vercel_client.get("/api/health").json()["email"] is None
+
+
+def test_preview_can_opt_in_to_real_data(monkeypatch):
+    import main
     monkeypatch.delenv("USE_SAMPLE_DATA", raising=False)
     monkeypatch.setenv("VERCEL_ENV", "preview")
-    assert main._use_sample_data() is True
-    monkeypatch.setenv("GOOGLE_CREDENTIALS_JSON", "{}")
-    assert main._use_sample_data() is False
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@127.0.0.1:1/none")
+    monkeypatch.setenv("PREVIEW_ALLOW_REAL_DATA", "true")
+    assert main._use_sample_data() is False and main.db.enabled() is True
 
 
 @pytest.mark.parametrize("sample", [None, "1"])
@@ -175,3 +185,66 @@ def test_dotenv_is_not_loaded_on_hosted_platforms(tmp_path):
     hosted = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                             env={**base, "VERCEL": "1"}, cwd=tmp_path)
     assert local.stdout.strip() == "loaded" and hosted.stdout.strip() == "None", (local.stderr, hosted.stderr)
+
+
+def _ip_headers_client(monkeypatch):
+    import main
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("VERCEL_ENV", "development")
+    monkeypatch.setenv("USE_SAMPLE_DATA", "1")
+    monkeypatch.delenv("TRUST_PROXY", raising=False)
+    main._hits.clear()
+    return main
+
+
+def _fake_request(headers, host="10.0.0.1"):
+    from starlette.requests import Request
+    raw = [(k.lower().encode(), v.encode()) for k, v in headers.items()]
+    return Request({"type": "http", "headers": raw, "client": (host, 1), "method": "GET", "path": "/"})
+
+
+def test_vercel_client_ip_prefers_vercel_header_over_spoofable_xff(monkeypatch):
+    main = _ip_headers_client(monkeypatch)
+    spoofed = {"x-vercel-forwarded-for": "203.0.113.9, 10.1.1.1", "x-forwarded-for": "1.2.3.4, 5.6.7.8"}
+    assert main._client_ip(_fake_request(spoofed)) == "203.0.113.9"
+    # no Vercel header: fall back to the last X-Forwarded-For hop, then the socket address
+    assert main._client_ip(_fake_request({"x-forwarded-for": "1.2.3.4, 5.6.7.8"})) == "5.6.7.8"
+    assert main._client_ip(_fake_request({})) == "10.0.0.1"
+
+
+def test_vercel_header_is_ignored_off_vercel(monkeypatch):
+    import main
+    monkeypatch.delenv("VERCEL", raising=False)
+    monkeypatch.delenv("RENDER", raising=False)
+    monkeypatch.delenv("TRUST_PROXY", raising=False)
+    assert main._client_ip(_fake_request({"x-vercel-forwarded-for": "203.0.113.9"})) == "10.0.0.1"
+
+
+def test_rate_limit_uses_the_vercel_header(monkeypatch, sheet_client):
+    main = _ip_headers_client(monkeypatch)
+    monkeypatch.setenv("USE_SAMPLE_DATA", "1")
+    codes = [sheet_client.post("/requests", json={**BODY, "org_email": f"o{i}@example.org"},
+                               headers={"x-vercel-forwarded-for": "203.0.113.9",
+                                        "x-forwarded-for": f"9.9.9.{i}"}).status_code for i in range(12)]
+    assert codes[:10] == [200] * 10 and set(codes[10:]) == {429}
+
+
+@pytest.mark.parametrize("vercel,render,enable,hidden", [
+    (None, None, None, False), ("1", None, None, True), (None, "true", None, True), ("1", None, "1", False),
+])
+def test_api_docs_are_off_when_deployed_unless_enabled(sheet_client, monkeypatch, vercel, render, enable, hidden):
+    for name, val in (("VERCEL", vercel), ("RENDER", render), ("ENABLE_API_DOCS", enable)):
+        monkeypatch.delenv(name, raising=False) if val is None else monkeypatch.setenv(name, val)
+    assert (sheet_client.get("/docs").status_code == 404) is hidden
+
+
+def test_internal_requests_list_needs_the_hq_token(sheet_client):
+    assert sheet_client.get("/api/requests").status_code == 401
+    assert sheet_client.get("/api/requests", headers={"X-HQ-Token": "wrong"}).status_code == 401
+    assert sheet_client.get("/api/requests", headers={"X-HQ-Token": "test-hq-token"}).status_code == 200
+
+
+def test_vercelignore_keeps_secrets_out_but_allows_the_example():
+    text = (ROOT / ".vercelignore").read_text()
+    for pattern in (".env*", "!.env.example", "*.pem", "*.key", "*.p12", "*credentials*.json", "*gcreds*", ".git", ".venv"):
+        assert pattern in text.splitlines(), pattern

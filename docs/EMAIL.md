@@ -81,7 +81,8 @@ When a cap is hit the request is still saved and the email is skipped with a log
 
 
 On Vercel the abuse limits are per serverless instance (see [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md)), so
-they are softer than the numbers above. Email is also sent before the response there (waiting at most
+they are best-effort, softer than the numbers above, and the Vercel firewall rate-limit rule is the real
+control. A shared counter (Upstash Redis or Vercel KV) is a possible future option. Email is also sent before the response there (waiting at most
 5 seconds), because the function may be frozen once the response is sent.
 
 ## Troubleshooting
