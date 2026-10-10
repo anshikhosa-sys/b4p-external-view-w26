@@ -265,6 +265,12 @@ Speed: first row cold 73 ms, warm 37 ms; search 105-112 ms; CLS 0; 0 images, 1 s
 - Title is one line, 24 px, 600 16px; header 65 px. Landing cards 300 px, 0 spread at 1440/1280/1180/1024/360; toggles pass.
 - Jest 409 passed / 2 skipped.
 
+**FE-20 fix + weight normalisation:**
+- 0 overflowing cells in any column at 900-1920, and the qty probe finds nothing at 900/1440.
+- Stepper is 138 px: input 48 px, buttons 44x44 x2. 99 through 10000 fit (44 px of text in 46 px).
+- Weights are now only 400/500/600 on the landing, category, drawer, review (2 items), confirmation and My requests.
+- Budget JS 73.9 / CSS 12.9 KB; Jest 409 passed / 2 skipped.
+
 ## Browser pass (McMaster layout)
 
 Chrome against the local build and 1,137-row snapshot; 360px checks in an iframe.
@@ -400,7 +406,7 @@ Options: `WIDTH=360`, `CPU=4`, `SLOW_NET=1`, `SEARCH=a,b`, `VERBOSE=1` (layout-s
 | FE-17 | Low | frontend-engineer | Round 3: one 35-58 ms frame (41 ms on the final build) at 4x CPU near the top of the biggest category, likely `content-visibility: auto` sections rendering on entry (baseline worst 21 ms) | Fixed (content-visibility removed), verified: misc-surgical worst 19-23 ms at 4x in 5 runs |
 | FE-18 | Low-Med | frontend-engineer | At 900-~1100 px (1024 measured) Expires (83 px) overflowed on "from Mon YYYY" (needs 109 px; 27 of 92 cells), and In stock (48 px) overflowed once | Fixed, verified: tree moved to ≥1100; Expires 92 / In stock 64 px at ≤1279; 0 overflowing cells at 900/1024/1099/1100/1279/1280/1440/1920 |
 | FE-19 | Low-Med | frontend-engineer | Table stepper input was 34 px (28 px of text): quantities of 1000 or more (33-42 px) were clipped | Fixed, verified: input 5.5ch = 49 px (47 px of text), "10000" (42 px) fits; both stepper buttons a full 44x44 (they had shrunk to ~37 px); action column 150 px |
-| FE-20 | Low | frontend-engineer | System font: the table stepper (44 + 5.5ch input + 44 = 152 px) sticks 2 px out of the 150 px Qty cell at every width | Open |
+| FE-20 | Low | frontend-engineer | System font: the table stepper (44 + 5.5ch input + 44 = 152 px) stuck 2 px out of the 150 px Qty cell at every width | Fixed, verified: input min-width 0 → 48 px, stepper 138 px, 0 Qty overflow at 9 widths, "10000" (44 px) fits in 46 px |
 | QA-09 | Low | email-engineer | `If-None-Match: *` returned 200 instead of 304 | Fixed, verified |
 | QA-08 | Low | email-engineer | README and the run instructions say `USE_SAMPLE_DATA=1 uvicorn main:app`, but `sample_inventory.json` is missing and `*.json` is gitignored, so `/api/supplies` fails on a fresh clone | Fixed, verified (repo `sample_inventory.json`, `SAMPLE_INVENTORY_PATH`) |
 
