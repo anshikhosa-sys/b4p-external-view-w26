@@ -74,6 +74,10 @@ Both HTTP providers use HTTPS, which Render allows.
 When a cap is hit the request is still saved and the email is skipped with a logged warning.
 Only the daily cap stops the HQ alert.
 
+On Vercel the abuse limits are per serverless instance (see [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md)), so
+they are softer than the numbers above. Email is also sent before the response there (waiting at most
+5 seconds), because the function may be frozen once the response is sent.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

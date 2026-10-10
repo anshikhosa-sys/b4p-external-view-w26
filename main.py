@@ -1,3 +1,4 @@
+import concurrent.futures
 import hashlib
 import hmac
 import json
@@ -12,7 +13,6 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import gspread
-import pandas as pd
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.encoders import jsonable_encoder
@@ -63,8 +63,40 @@ _sample_client_request_ids: set[str] = set()
 _sample_org_request_rows: list[dict[str, str]] = []
 
 
+def _vercel_env() -> str:
+    return os.environ.get("VERCEL_ENV", "").strip().lower()  # production | preview | development
+
+
+def _has_google_creds() -> bool:
+    if os.environ.get("GOOGLE_CREDENTIALS_JSON"):
+        return True
+    key_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    return bool(key_path) and Path(key_path).is_file()
+
+
+def _auto_sample_preview() -> bool:
+    """Vercel preview deploys with no secrets run on the demo inventory, with email off."""
+    return (_vercel_env() == "preview" and not os.environ.get("DATABASE_URL", "").strip()
+            and not os.environ.get("GOOGLE_CREDENTIALS_JSON"))
+
+
 def _use_sample_data() -> bool:
-    return os.environ.get("USE_SAMPLE_DATA", "").strip().lower() in ("1", "true", "yes")
+    if _vercel_env() == "production":
+        return False  # production must never silently serve demo data
+    explicit = os.environ.get("USE_SAMPLE_DATA", "").strip().lower() in ("1", "true", "yes")
+    return explicit or _auto_sample_preview()
+
+
+def _check_configured() -> None:
+    """Production with no database and no Google credentials is a deploy mistake: say so (503)."""
+    if _vercel_env() == "production" and not db.enabled() and not _has_google_creds():
+        raise HTTPException(
+            status_code=503,
+            detail="Server is not configured: set DATABASE_URL or GOOGLE_CREDENTIALS_JSON.",
+        )
+
+
+app.router.dependencies.append(Depends(_check_configured))  # runs before every route
 
 
 def _get_google_creds() -> Credentials:
@@ -89,23 +121,19 @@ def _gspread_client():
     return gspread.authorize(_get_google_creds())
 
 
-def _clean_columns(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df.columns = [
-        f"Unnamed_{i}" if str(col).strip() == "" else str(col).strip()
-        for i, col in enumerate(df.columns)
-    ]
+def _clean_header(header: list) -> list[str]:
+    """Trim names, name blank columns, and de-duplicate repeats ("Qty", "Qty.1", ...)."""
     seen: dict[str, int] = {}
-    new_cols = []
-    for c in df.columns:
-        if c in seen:
-            seen[c] += 1
-            new_cols.append(f"{c}.{seen[c]}")
+    out = []
+    for i, col in enumerate(header):
+        name = str(col).strip() or f"Unnamed_{i}"
+        if name in seen:
+            seen[name] += 1
+            name = f"{name}.{seen[name]}"
         else:
-            seen[c] = 0
-            new_cols.append(c)
-    df.columns = new_cols
-    return df
+            seen[name] = 0
+        out.append(name)
+    return out
 
 
 @app.exception_handler(gspread.exceptions.APIError)
@@ -148,11 +176,12 @@ _warned_xff = False
 
 
 def _trust_proxy() -> bool:
-    """TRUST_PROXY=1/0 forces it; otherwise on only when running on Render (RENDER is set)."""
+    """TRUST_PROXY=1/0 forces it; otherwise on when running on Render or Vercel (their proxies
+    set X-Forwarded-For to the real client IP)."""
     setting = os.environ.get("TRUST_PROXY", "").strip()
     if setting in ("0", "1"):
         return setting == "1"
-    return bool(os.environ.get("RENDER"))
+    return bool(os.environ.get("RENDER") or os.environ.get("VERCEL"))
 
 
 def _client_ip(request: Request) -> str:
@@ -252,11 +281,12 @@ def _read_sheet_inventory() -> list[dict]:
     if not all_values:
         return []
 
-    df = pd.DataFrame(all_values[1:], columns=all_values[0])
-    df = _clean_columns(df)
-    records = df.to_dict(orient="records")
-    for i, rec in enumerate(records):
+    header = _clean_header(all_values[0])
+    records = []
+    for i, row in enumerate(all_values[1:]):
+        rec = {name: (row[j] if j < len(row) else "") for j, name in enumerate(header)}
         rec["_sheet_row"] = i + 2
+        records.append(rec)
     return records
 
 
@@ -582,6 +612,31 @@ def _inventory_primary_key(record: dict) -> str:
     return ""
 
 
+SERVERLESS_EMAIL_BUDGET = 5  # seconds in total per request on Vercel
+
+
+def _deliver(tasks: BackgroundTasks, *jobs: tuple) -> None:
+    """Run (function, *args) email jobs. Never raises: email must not fail a saved request.
+
+    Normally they run after the response (BackgroundTasks). On Vercel the function may be frozen
+    once the response is sent, so send now, in parallel, waiting at most a few seconds.
+    """
+    if _auto_sample_preview():
+        return  # preview with demo data: never email anyone
+    if not os.environ.get("VERCEL"):
+        for fn, *args in jobs:
+            tasks.add_task(fn, *args)
+        return
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=max(len(jobs), 1))
+    try:
+        concurrent.futures.wait([pool.submit(fn, *args) for fn, *args in jobs],
+                                timeout=SERVERLESS_EMAIL_BUDGET)
+    except Exception:
+        logger.exception("email delivery failed")
+    finally:
+        pool.shutdown(wait=False)
+
+
 def _queue_submit_emails(tasks: BackgroundTasks, body: OrgRequestBody, request_id: str,
                          flagged: list[str]) -> None:
     """Confirmation + HQ alert run after the response, so a slow provider never blocks users."""
@@ -589,8 +644,9 @@ def _queue_submit_emails(tasks: BackgroundTasks, body: OrgRequestBody, request_i
         return
     items = [{"item_name": i.item_name, "category": i.category, "quantity": i.quantity}
              for i in body.items]
-    tasks.add_task(email_svc.send_org_confirmation, body.org_name, body.org_email, items, request_id)
-    tasks.add_task(email_svc.send_hq_alert, body.org_name, body.org_email, items, request_id, flagged)
+    _deliver(tasks,
+             (email_svc.send_org_confirmation, body.org_name, body.org_email, items, request_id),
+             (email_svc.send_hq_alert, body.org_name, body.org_email, items, request_id, flagged))
 
 
 def _review_flags(body: OrgRequestBody) -> list[bool]:
@@ -673,7 +729,8 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
                 {"item_name": r["Item Name"], "category": r["Category"], "quantity": r["Quantity Requested"]}
                 for r in rows
             ]
-            tasks.add_task(email_svc.send_status_update, rows[0]["Org Name"], rows[0]["Org Email"], body.status, items)
+            _deliver(tasks, (email_svc.send_status_update, rows[0]["Org Name"], rows[0]["Org Email"],
+                             body.status, items))
         return {"request_id": request_id, "status": body.status}
 
     if _use_sample_data():
@@ -689,8 +746,8 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
         if rows[0]["Org Email"]:
             items = [{"item_name": r["Item Name"], "category": r["Category"],
                       "quantity": r["Quantity Requested"]} for r in rows]
-            tasks.add_task(email_svc.send_status_update, rows[0]["Org Name"], rows[0]["Org Email"],
-                           body.status, items)
+            _deliver(tasks, (email_svc.send_status_update, rows[0]["Org Name"], rows[0]["Org Email"],
+                             body.status, items))
         return {"request_id": request_id, "status": body.status, "updated_rows": len(rows)}
 
     spreadsheet = _open_requests_spreadsheet()
@@ -746,7 +803,7 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
     ])
 
     if org_email:
-        tasks.add_task(email_svc.send_status_update, org_name, org_email, body.status, items)
+        _deliver(tasks, (email_svc.send_status_update, org_name, org_email, body.status, items))
 
     return {"request_id": request_id, "status": body.status}
 

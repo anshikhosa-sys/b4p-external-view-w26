@@ -1,6 +1,8 @@
 # B4P External View
 
-React dashboard (`my-dashboard/`, Vercel) + FastAPI backend (`main.py`, Render).
+React dashboard (`my-dashboard/`) + FastAPI backend (`main.py`). Both deploy together on Vercel (the API runs
+as a serverless function from `api/index.py`): see [docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md). Locally,
+run the backend with `uvicorn main:app`.
 
 ## Data source
 
@@ -58,6 +60,11 @@ set `SAMPLE_INVENTORY_PATH` to use a different file.
 - `GET /requests` sends `Cache-Control: no-store` because it is per-clinic data.
 - `/api/supplies` leaves out the `Image URL` field (photos are not shown and can show patient labels).
 - In sheet mode the inventory read is also cached server-side for 60 seconds (`INVENTORY_CACHE_SECONDS` in `main.py`).
+
+## Known limitation on serverless
+
+The in-memory rate limits and email caps are per serverless instance (Vercel starts several and recycles them),
+so they are softer than the numbers above. Durable counters in Postgres would fix that.
 
 ## Tests
 

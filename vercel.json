@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd my-dashboard && INLINE_RUNTIME_CHUNK=false GENERATE_SOURCEMAP=false npm run build",
+  "buildCommand": "cd my-dashboard && REACT_APP_API_URL=/api INLINE_RUNTIME_CHUNK=false GENERATE_SOURCEMAP=false npm run build",
   "outputDirectory": "my-dashboard/build",
   "installCommand": "cd my-dashboard && npm install",
   "framework": null,
@@ -28,6 +28,18 @@
           "value": "camera=(), microphone=(), geolocation=()"
         }
       ]
+    }
+  ],
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "{main.py,app/**,sample_inventory.json}",
+      "maxDuration": 15
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
     }
   ]
 }

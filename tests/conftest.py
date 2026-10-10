@@ -3,7 +3,8 @@ import subprocess
 
 # Never send real email from tests: empty values win over .env (load_dotenv does not override).
 for _var in ("RESEND_API_KEY", "BREVO_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
-             "EMAIL_FROM", "EMAIL_REPLY_TO", "HQ_EMAIL", "EMAIL_DAILY_LIMIT"):
+             "EMAIL_FROM", "EMAIL_REPLY_TO", "HQ_EMAIL", "EMAIL_DAILY_LIMIT", "VERCEL", "VERCEL_ENV",
+             "GOOGLE_CREDENTIALS_JSON"):
     os.environ[_var] = ""
 
 import psycopg
