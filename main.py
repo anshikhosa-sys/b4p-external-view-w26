@@ -30,7 +30,10 @@ from fastapi.responses import JSONResponse
 from app import db
 from app.services import email as email_svc
 
-load_dotenv()
+# .env is for local development only; hosted platforms provide real environment variables.
+# Never override variables that are already set (tests and scripts rely on that).
+if not os.environ.get("VERCEL") and not os.environ.get("RENDER"):
+    load_dotenv(override=False)
 
 BASE_DIR = Path(__file__).resolve().parent
 SAMPLE_PATH = Path(os.environ.get("SAMPLE_INVENTORY_PATH") or BASE_DIR / "sample_inventory.json")

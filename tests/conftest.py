@@ -4,8 +4,9 @@ import subprocess
 # Never send real email from tests: empty values win over .env (load_dotenv does not override).
 for _var in ("RESEND_API_KEY", "BREVO_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
              "EMAIL_FROM", "EMAIL_REPLY_TO", "HQ_EMAIL", "EMAIL_DAILY_LIMIT", "VERCEL", "VERCEL_ENV",
-             "GOOGLE_CREDENTIALS_JSON"):
-    os.environ[_var] = ""
+             "GOOGLE_CREDENTIALS_JSON", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_SHEET_ID",
+             "REQUESTS_SHEET_ID"):
+    os.environ[_var] = ""  # set (empty) before main is imported, so load_dotenv cannot refill them
 
 import psycopg
 import pytest
@@ -32,6 +33,18 @@ def test_database():
     yield
     if made.returncode == 0:
         subprocess.run(["dropdb", "--if-exists", name], capture_output=True)
+
+
+@pytest.fixture(autouse=True)
+def no_google_sheets(monkeypatch):
+    """Tests must never reach the live Google Sheet. Tests that need sheet behaviour replace
+    main._gspread_client with an in-memory fake, which bypasses this."""
+    import main
+
+    def refuse(*a, **k):
+        raise RuntimeError("tests must not touch Google Sheets")
+
+    monkeypatch.setattr(main, "_get_google_creds", refuse)
 
 
 @pytest.fixture(autouse=True)

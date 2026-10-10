@@ -1,5 +1,6 @@
 """Vercel serverless hosting: api/index.py wrapper, no pandas, inline email, preview/production modes."""
 import importlib.util
+import os
 import time
 from pathlib import Path
 
@@ -150,3 +151,27 @@ def test_production_with_database_url_passes_the_guard(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@127.0.0.1:1/none")
     r = TestClient(main.app).get("/health")
     assert r.status_code == 200 and r.json()["ok"] is False  # DB is unreachable, but not a config error
+
+
+def test_tests_cannot_reach_the_live_sheet(monkeypatch):
+    import os
+    import main
+    for var in ("GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CREDENTIALS_JSON", "GOOGLE_SHEET_ID", "REQUESTS_SHEET_ID"):
+        assert os.environ[var] == "", var
+    with pytest.raises(RuntimeError, match="must not touch Google Sheets"):
+        main._gspread_client()
+
+
+def test_dotenv_is_not_loaded_on_hosted_platforms(tmp_path):
+    """Run main in a subprocess with a .env that would set a variable: only local runs read it."""
+    import subprocess
+    import sys
+    env_file = tmp_path / ".env"
+    env_file.write_text("DOTENV_PROBE=from-dotenv\n")
+    code = ("import os, dotenv; dotenv.load_dotenv = (lambda *a, **k: os.environ.setdefault('DOTENV_PROBE', 'loaded'));"
+            "import sys; sys.path.insert(0, %r); import main; print(os.environ.get('DOTENV_PROBE'))" % str(ROOT))
+    base = {k: v for k, v in os.environ.items() if k not in ("VERCEL", "RENDER", "DOTENV_PROBE")}
+    local = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=base, cwd=tmp_path)
+    hosted = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                            env={**base, "VERCEL": "1"}, cwd=tmp_path)
+    assert local.stdout.strip() == "loaded" and hosted.stdout.strip() == "None", (local.stderr, hosted.stderr)
