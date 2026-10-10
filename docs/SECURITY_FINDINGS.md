@@ -563,3 +563,47 @@ Tests (synthetic): `test_phi_labelled_ids_redacted_and_product_codes_kept` (pass
 `test_phi_labelled_id_redacted_in_every_column` (strict xfail; fix: redact a row's labelled Pt ID numbers in every field of
 that row); `test_phi_phone_rule_keeps_product_codes` (strict xfail; fix: drop the bare-digit-run rule, or skip runs after
 REF/catalog/reorder/lot/item, since the separator-shaped and keyword phone rules already cover real phone numbers).
+
+**PHI re-measured (2026-10-10, current code, through `get_inventory_records` with `_redact_row`).** In-process, sample mode
+on the snapshot, from a `.env`-free copy, with Google blocked. Counts only.
+- Redactions: 23 labelled Pt IDs (9 in Name, 14 in Notes); 3 labelled IDs copied into Lot Number, now removed by the row-level
+  fix; 2 phone numbers in Notes.
+- (1) PHI-looking text still present in **9 rows**: 8 rows hold 9 unlabelled `##########-##` tokens (5 in Lot Number, 4 in Notes;
+  probable patient IDs, possibly real lots, for HQ to review), and 1 row holds a labelled ID copied without its dash
+  (`test_phi_labelled_id_redacted_without_dash`, strict xfail). MRN, DOB + date, phone-shaped and "Patient:" + name all
+  surviving: 0.
+- (2) False positives: **0 product/lot codes** (the bare-digit phone rule was removed;
+  `test_phi_phone_rule_keeps_product_codes` now passes). The only non-patient text removed is 2 manufacturer support numbers on
+  packaging. Synthetic shape: "box shows the logo and phone number 555.010.0199".
+
+**PHI re-measured again (2026-10-10, specimen-row rule + dash-less fix).** Same method (`get_inventory_records`, sample mode,
+`.env`-free copy, Google blocked, counts only).
+- (1) PHI-looking text survives in **3 rows**: 4 unlabelled `##########-##` tokens (3 in Lot Number, 1 in Notes) in rows the
+  specimen-family rule doesn't classify as specimen tubes. Labelled Pt IDs surviving anywhere in their row, in any form including
+  dash-less: **0**. MRN / DOB / phone-shaped / "Patient:" names: 0.
+- (2) False positives: **0** product/lot codes after REF/lot/catalog/reorder keywords. The specimen-row rule removed 5 unlabelled
+  ID-shaped tokens in 5 rows (2 in Lot Number, 3 in Notes); in 1 of those rows the whole Lot Number cell became `[removed]`. If that
+  value was a real lot number, HQ loses it in the dashboard, though not in the sheet. Accepted trade-off unless HQ says otherwise.
+  The other non-patient text removed is still the 2 manufacturer phone numbers.
+- `test_phi_labelled_id_redacted_without_dash` now passes.
+
+**PHI re-measured (2026-10-10, unlabelled ID tokens now redacted on every row, REF/Cat/Catalog/Item/Model keep-list).**
+- **False positives (product/lot codes removed): 3 at most.** 1 definite: an ID-shaped token right after "lot number" in Notes
+  (an explicitly labelled lot); synthetic: "box label shows REF 302995 and lot number 1234567890-12". 2 likely: Lot Number cells in
+  ordinary product (non-specimen) rows, now shown only as `[removed]`; synthetic: "Suture kit", Lot Number "1234567890-01". In
+  total the rule removed 8 unlabelled tokens in 7 rows (4 Lot Number, 4 Notes; 5 in specimen rows, which are probably correct
+  removals). No token value repeats across rows, 3 Lot Number cells became `[removed]`, and no ordinary words were altered.
+  0 tokens currently rely on the REF/Cat/Catalog/Item/Model keep-list in this snapshot.
+- **Surviving PHI-looking rows: 1**, a Lot Number token with a letter suffix (`##########-A#`), which the digits-only suffix
+  misses. Labelled IDs surviving in any form: 0. MRN / DOB / phone / names: 0.
+- Tests (strict xfail, synthetic): `test_phi_keeps_token_labelled_as_lot` (add Lot to the keep-list),
+  `test_phi_removes_id_token_with_letter_suffix` (suffix `[0-9A-Z]{1,2}`).
+
+**PHI final (2026-10-10, current code: every-row ID-token rule, keep-list REF/Cat/Catalog/Item/Model/Part/Lot, letter suffixes).**
+- **False positives: at most 2 product/lot codes**, both Lot Number cells in ordinary (non-specimen) product rows now shown as
+  `[removed]`. They're unique values, so they can't be told apart from patient IDs without looking (synthetic shape: "Suture kit",
+  Lot Number "1234567890-01"). The labelled-lot case is now kept. In total 7 unlabelled tokens were removed in 7 rows (5 in
+  specimen rows, likely correct). No ordinary words were altered.
+- **Surviving PHI-looking rows: 0.** The one ID-shaped token left is the explicitly labelled "lot number" in Notes, kept by design.
+  Labelled IDs in any form, MRN, DOB, phone and names: 0. Both earlier strict xfails (lot keep-list, letter suffix) now pass.
+  Suite: 429 passed.

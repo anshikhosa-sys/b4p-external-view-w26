@@ -466,7 +466,7 @@ def test_labelled_id_is_removed_from_every_column_of_its_row(monkeypatch):
                                   "Notes": "ref 0000000003-1 box", "Quantity": "2"})
     assert "0000000003" not in str(row)
     other = _redacted(monkeypatch, {"Name": "Gauze", "Lot Number": "0000000003-1"})
-    assert other["Lot Number"] == "0000000003-1"  # not a specimen row: other rows are untouched
+    assert other["Lot Number"] == "[removed]"  # unlabelled but ID-shaped: removed on any row
 
 
 @pytest.mark.parametrize("name", ["Blood collection tube", "Urine sample cup", "Serum separator", "Sample vial",
@@ -477,11 +477,24 @@ def test_specimen_rows_lose_unlabelled_patient_id_shaped_tokens(monkeypatch, nam
     assert row["Lot Number"] == "[removed]" and "REF 1234567890" in row["Notes"]
 
 
-def test_non_specimen_rows_keep_id_shaped_lot_numbers(monkeypatch):
-    row = _redacted(monkeypatch, {"Name": "Gauze pads", "Lot Number": "0000000005-1", "Quantity": "1"})
-    assert row["Lot Number"] == "0000000005-1"
+def test_id_shaped_tokens_are_removed_on_every_row_unless_they_follow_a_code_label(monkeypatch):
+    row = _redacted(monkeypatch, {"Name": "Gauze pads", "Lot Number": "0000000005-1", "Quantity": "1",
+                                  "Notes": "REF 1234567890-1, Cat. no 2345678901-2, item #3456789012-3, model 4567890123-4, part no 6789012345-6, "
+                                           "seen 5678901234-5"})
+    assert row["Lot Number"] == "[removed]"
+    assert "1234567890-1" in row["Notes"] and "2345678901-2" in row["Notes"]
+    assert "3456789012-3" in row["Notes"] and "4567890123-4" in row["Notes"] and "6789012345-6" in row["Notes"]
+    assert "5678901234" not in row["Notes"]  # unlabelled: removed
 
 
 def test_ref_number_in_notes_survives():
     import main
     assert main._redact_phi("REF 1234567890", notes=True) == "REF 1234567890"
+
+
+def test_dashless_and_suffixless_copies_of_a_labelled_id_are_removed(monkeypatch):
+    row = _redacted(monkeypatch, {"Name": "Gauze Pt. ID " "0000000004-12", "Notes": "tube 000000000412 and 0000000004 only",
+                                  "Lot Number": "x0000000004-12y", "Quantity": "1"})
+    assert "0000000004" not in str(row)
+    short = _redacted(monkeypatch, {"Name": "Gauze Pt. ID " "12345-6", "Notes": "box 123456 of 12345-6", "Quantity": "1"})
+    assert short["Notes"] == "box 123456 of [removed]"  # short IDs only match as written

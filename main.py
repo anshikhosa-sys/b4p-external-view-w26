@@ -332,16 +332,17 @@ def _redact_phi(text: str, notes: bool = False) -> str:
     return text
 
 
-# Same keywords as the frontend icon mapping's specimen/sample-tube family (productIcons/mapping.js).
-_SPECIMEN_RE = re.compile(
-    r"\b(?:vials?|specimens?|samples?|serum|plasma|hematology|predose|urine|saliva|microcentrifuge"
-    r"|blood (?:collection |test )?tubes?|draw tube|(?:collection|centrifuge|test) tubes?)\b", re.I)
-_PT_ID_SHAPE = re.compile(r"\b[A-Z]?\d{9,10}-\d{1,2}\b")  # the shape of a patient ID, label or not
+_PT_ID_SHAPE = re.compile(r"\b[A-Z]?\d{9,10}-[0-9A-Z]{1,2}\b")  # the shape of a patient ID, label or not
+# A product code that directly follows one of these labels is kept ("REF 1234567890-1").
+_CODE_LABEL = re.compile(r"(?:ref|cat(?:alog)?|item|model|part|lot)\.?\s*(?:no\.?|#|number)?[\s:#]*$", re.I)
 
 
-def _is_specimen_row(rec: dict) -> bool:
-    return any(_SPECIMEN_RE.search(str(v)) for k, v in rec.items()
-               if k.strip().lower() in ("name", "general", "subcategory") and isinstance(v, str))
+def _redact_id_shaped(text: str) -> str:
+    """Patient IDs are often copied unlabelled into lot or notes cells, so every ID-shaped token goes
+    unless it directly follows REF / Cat / Catalog / Item / Model / Part / Lot."""
+    def replace(m):
+        return m.group(0) if _CODE_LABEL.search(text[max(0, m.start() - 16):m.start()]) else "[removed]"
+    return _PT_ID_SHAPE.sub(replace, text)
 
 
 def _redact_row(rec: dict) -> dict:
@@ -349,15 +350,20 @@ def _redact_row(rec: dict) -> dict:
     into another column (e.g. Lot Number) without its label."""
     ids = {m.group(1) for v in rec.values() if isinstance(v, str) for m in _PT_ID_RE.finditer(v)}
     ids = [i for i in ids if len(i) >= 5]  # too-short tokens would eat unrelated text
-    specimen = _is_specimen_row(rec)  # their lot numbers are often patient IDs: privacy beats lot data
+    # Also catch copies typed without the dash ("000000000412") or without the "-12" suffix.
+    forms = set(ids)
+    for patient_id in ids:
+        for variant in (patient_id.replace("-", ""), patient_id.split("-")[0]):
+            if len(variant) >= 8:  # long enough that a match elsewhere is not a coincidence
+                forms.add(variant)
+    ids = sorted(forms, key=len, reverse=True)  # longest first so a long form is replaced whole
     out = {}
     for key, value in rec.items():
         if isinstance(value, str):
             value = _redact_phi(value, notes=key.strip().lower() in ("notes", "note"))
             for patient_id in ids:
                 value = re.sub(re.escape(patient_id), "[removed]", value, flags=re.I)
-            if specimen:
-                value = _PT_ID_SHAPE.sub("[removed]", value)
+            value = _redact_id_shaped(value)
         out[key] = value
     return out
 
