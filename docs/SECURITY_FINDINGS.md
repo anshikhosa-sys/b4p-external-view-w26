@@ -464,7 +464,7 @@ off; inline email returns within the 5s budget (well under maxDuration 15s) even
 | V1 | Low-Med | OpenAPI docs/schema served in production | Fixed, verified (off on Vercel/Render unless ENABLE_API_DOCS=1) |
 | V2 | Low | .vercelignore misses common secret filenames | Fixed, verified (globs: .env*, *.pem, *.key, *credential*, *gcreds*, ...) |
 | V-PREVIEW | Medium | preview isolation depends on env vars being production-scoped | Fixed, verified: previews are sandboxed in code even with secrets (only PREVIEW_ALLOW_REAL_DATA=true opts out) |
-| V4 | Medium | internal POST /api/requests (/api/api/requests) anonymous + unthrottled sheet writer | Open (test) |
+| V4 | Medium | internal POST /api/requests (/api/api/requests) anonymous + unthrottled sheet writer | Fixed, verified (HQ token + rate limit) |
 | V-STATE | Medium | in-memory rate limits / email caps are per-instance on serverless | Mitigated by required Vercel firewall rule (DEPLOY_VERCEL.md); app limits are best-effort |
 | V3 | Info | X-Forwarded-For trust behind Vercel's proxy | Fixed: reads x-vercel-forwarded-for, only when VERCEL is set (tested) |
 
@@ -537,3 +537,29 @@ only uses `/requests`), and the required Vercel firewall rule targets `/api/requ
 it doesn't cover this path. In sheet mode anyone can append unlimited rows to the internal Requests tab and burn the shared Sheets
 quota, which also starves inventory reads for every clinic. Fix: add `dependencies=[Depends(require_hq)]` (as on the GET), or
 remove the route if nothing uses it. Test: `test_internal_request_submit_is_not_anonymous` (strict xfail).
+
+## PHI redaction coverage (2026-10-10, local snapshot, counts only)
+
+Measured `_redact_phi` (as applied by `get_inventory_records`, with `notes=True` for Notes) against the local 1137-row snapshot,
+from a `.env`-free repo copy. The scripts printed only counts and masked shapes, and the ambiguous tokens were judged locally.
+No real values appear here or in any message. All examples below are synthetic.
+
+- **Changed:** 39 fields in 36 rows. 23 Pt ID hits (all true positives: every one is a labelled "Pt. ID ##########-##"; 20 rows
+  carry such a label) and 16 Notes phone-rule hits. The MRN, DOB and "Patient: Name" rules had 0 hits (forward-looking).
+- **Still PHI-looking after redaction: 10 rows, 11 tokens.** 2 are definite slips: the row's labelled Pt ID number is copied into
+  another column (Lot Number), unlabelled, and survives. 9 are probable: `##########-##` tokens with the same shape as patient IDs
+  but no label (7 in Lot Number, 4 in Notes across both kinds; most in specimen/blood-tube rows). They could be real lot numbers in
+  that format, so HQ should eyeball those rows. Synthetic example: Name `Specimen tube Pt. ID <digits>`, Lot Number
+  `0000000003-1`, so the Lot Number keeps the ID.
+- **False positives: 14 Notes fields in 14 rows, all from the bare 10-11-digit phone rule; 0 were patient phones.** Every one is a
+  product code following REF, Reorder number, Catalog reference number or lot number. The other 2 phone hits are manufacturer
+  support numbers printed on packaging ("logo and phone number"): harmless to remove, but not patient data. Synthetic example:
+  `Reorder REF 3829991234 or lot number 0012345678` both get eaten. Nothing else was altered: REF/lot/gauge/size text, and the tube
+  codes that follow a removed ID (e.g. `PP10`), are kept.
+- **Checked, not PHI:** the "patient" mentions left in Notes are descriptive ("patient ID label", quoted tube types like
+  'Tandem'/'Vacuum'); the "chart" mentions are products; the 600+ "BD" hits were my detector matching the manufacturer.
+
+Tests (synthetic): `test_phi_labelled_ids_redacted_and_product_codes_kept` (passes);
+`test_phi_labelled_id_redacted_in_every_column` (strict xfail; fix: redact a row's labelled Pt ID numbers in every field of
+that row); `test_phi_phone_rule_keeps_product_codes` (strict xfail; fix: drop the bare-digit-run rule, or skip runs after
+REF/catalog/reorder/lot/item, since the separator-shaped and keyword phone rules already cover real phone numbers).

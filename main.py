@@ -315,10 +315,10 @@ _PHI_PATTERNS = [
     (re.compile(rf"\b(?:patient|pt)(?:\s+name)?\s*:\s*{_NAME}|\bpt\.?\s+name\s+{_NAME}", re.I),
      "Patient: [removed]"),
 ]
-_PHONE_PATTERNS = [  # (d) only applied to Notes, and only phone-shaped text
+_PT_ID_RE = re.compile(rf"\b(?:pt|pat|patient)\.?\s*id(?![a-z])[\s:#.]*({_ID})", re.I)
+_PHONE_PATTERNS = [  # (d) only applied to Notes, and only phone-shaped text (bare digit runs are product codes)
     re.compile(r"\b(?:tel|phone|ph|call|fax|cell)\.?\s*[:#]?\s*[\d(+][\d\s().+-]{5,}\d", re.I),
     re.compile(r"(?<![\w-])(?:\+?\d{1,2}[\s.-])?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?![\w-])"),
-    re.compile(r"(?<![\w.-])\d{10,11}(?![\w.-])"),
 ]
 
 
@@ -332,11 +332,39 @@ def _redact_phi(text: str, notes: bool = False) -> str:
     return text
 
 
+# Same keywords as the frontend icon mapping's specimen/sample-tube family (productIcons/mapping.js).
+_SPECIMEN_RE = re.compile(
+    r"\b(?:vials?|specimens?|samples?|serum|plasma|hematology|predose|urine|saliva|microcentrifuge"
+    r"|blood (?:collection |test )?tubes?|draw tube|(?:collection|centrifuge|test) tubes?)\b", re.I)
+_PT_ID_SHAPE = re.compile(r"\b[A-Z]?\d{9,10}-\d{1,2}\b")  # the shape of a patient ID, label or not
+
+
+def _is_specimen_row(rec: dict) -> bool:
+    return any(_SPECIMEN_RE.search(str(v)) for k, v in rec.items()
+               if k.strip().lower() in ("name", "general", "subcategory") and isinstance(v, str))
+
+
+def _redact_row(rec: dict) -> dict:
+    """Redact one inventory row. A labelled Pt ID is also removed where the same number is copied
+    into another column (e.g. Lot Number) without its label."""
+    ids = {m.group(1) for v in rec.values() if isinstance(v, str) for m in _PT_ID_RE.finditer(v)}
+    ids = [i for i in ids if len(i) >= 5]  # too-short tokens would eat unrelated text
+    specimen = _is_specimen_row(rec)  # their lot numbers are often patient IDs: privacy beats lot data
+    out = {}
+    for key, value in rec.items():
+        if isinstance(value, str):
+            value = _redact_phi(value, notes=key.strip().lower() in ("notes", "note"))
+            for patient_id in ids:
+                value = re.sub(re.escape(patient_id), "[removed]", value, flags=re.I)
+            if specimen:
+                value = _PT_ID_SHAPE.sub("[removed]", value)
+        out[key] = value
+    return out
+
+
 def get_inventory_records() -> list[dict]:
     """Inventory from the active source, with patient identifiers removed from every text field."""
-    return [{k: _redact_phi(v, notes=k.strip().lower() in ("notes", "note")) if isinstance(v, str) else v
-             for k, v in rec.items()}
-            for rec in _load_inventory_records()]
+    return [_redact_row(rec) for rec in _load_inventory_records()]
 
 
 INVENTORY_CACHE_SECONDS = 60

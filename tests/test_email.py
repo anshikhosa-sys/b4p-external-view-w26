@@ -417,7 +417,7 @@ def test_patient_identifiers_are_redacted(text, expected):
 @pytest.mark.parametrize("text", [
     "REF 302995", "Lot 6106151", "18G x 1.5 in", "Sterile EO, expiration date 2030-11-07, quantity one",
     "Patient-ready kit", "patient safety valve", "Pt ID label", "Lot 1234567890123", "Box 12 of 40",
-    "call before use", "Model DOB-100", "Medical record keeping supplies",
+    "call before use", "Model DOB-100", "Reorder REF 3829991234 or lot number 0012345678", "Medical record keeping supplies",
 ])
 def test_product_text_is_not_redacted(text):
     import main
@@ -429,7 +429,6 @@ def test_product_text_is_not_redacted(text):
     ("(555) 123 4567", "[phone removed]"),
     ("+1 555.123.4567", "[phone removed]"),
     ("Tel: 555 1234", "[phone removed]"),
-    ("Contact 55512345678 now", "Contact [phone removed] now"),
 ])
 def test_phone_numbers_are_redacted_in_notes_only(text, expected):
     import main
@@ -452,3 +451,37 @@ def test_inventory_output_redacts_notes_and_names_but_keeps_product_codes(sheet_
 def test_emails_never_include_notes():
     source = (Path(__file__).resolve().parent.parent / "app" / "services" / "email.py").read_text().lower()
     assert "notes" not in source
+
+
+# --- row-level and specimen-row patient ID redaction ----------------------------------
+
+def _redacted(monkeypatch, rec):
+    import main
+    monkeypatch.setattr(main, "_load_inventory_records", lambda: [dict(rec)])
+    return main.get_inventory_records()[0]
+
+
+def test_labelled_id_is_removed_from_every_column_of_its_row(monkeypatch):
+    row = _redacted(monkeypatch, {"Name": "Gauze Pt. ID " "0000000003-1", "Lot Number": "0000000003-1",
+                                  "Notes": "ref 0000000003-1 box", "Quantity": "2"})
+    assert "0000000003" not in str(row)
+    other = _redacted(monkeypatch, {"Name": "Gauze", "Lot Number": "0000000003-1"})
+    assert other["Lot Number"] == "0000000003-1"  # not a specimen row: other rows are untouched
+
+
+@pytest.mark.parametrize("name", ["Blood collection tube", "Urine sample cup", "Serum separator", "Sample vial",
+                                  "Specimen tube", "Plasma tube"])
+def test_specimen_rows_lose_unlabelled_patient_id_shaped_tokens(monkeypatch, name):
+    row = _redacted(monkeypatch, {"Name": name, "Lot Number": "C000000004-12", "Notes": "keep REF 1234567890",
+                                  "Subcategory": "", "Quantity": "1"})
+    assert row["Lot Number"] == "[removed]" and "REF 1234567890" in row["Notes"]
+
+
+def test_non_specimen_rows_keep_id_shaped_lot_numbers(monkeypatch):
+    row = _redacted(monkeypatch, {"Name": "Gauze pads", "Lot Number": "0000000005-1", "Quantity": "1"})
+    assert row["Lot Number"] == "0000000005-1"
+
+
+def test_ref_number_in_notes_survives():
+    import main
+    assert main._redact_phi("REF 1234567890", notes=True) == "REF 1234567890"
