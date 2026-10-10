@@ -296,17 +296,46 @@ def _load_inventory_records() -> list[dict]:
     return list(records)
 
 
-PHI_RE = re.compile(r"Pt\.?\s*ID\s*[A-Z0-9-]+", re.IGNORECASE)
+# --- patient data in inventory text (specimen-tube labels, free-text notes) --------------------
+# Conservative on purpose: every pattern needs a keyword (Pt ID, MRN, DOB, Patient:, phone) so lot
+# numbers and product codes ("REF 302995", "Lot 6106151", "18G") are left alone.
+_ID = r"(?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]*"  # an identifier token that contains a digit
+_NAME = r"(?-i:[A-Z][a-zA-Z'’.-]*)(?:[ ,]+(?-i:[A-Z][a-zA-Z'’.-]*)){0,3}"
+_DATE = (r"(?:\d{1,4}[/.\-]\d{1,2}[/.\-]\d{1,4}"
+         r"|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{2,4})")
+_PHI_PATTERNS = [
+    # (a) Pt ID, PtID, pt.id, Pat ID, Patient ID followed by an id
+    (re.compile(rf"\b(?:pt|pat|patient)\.?\s*id(?![a-z])[\s:#.]*{_ID}", re.I), "Pt. ID [removed]"),
+    # (b) MRN / Med Rec # / medical record followed by an id
+    (re.compile(rf"\b(?:mrn|med\.?\s*rec\.?(?:\s*(?:#|no\.?|number))?|medical\s+record(?:\s*(?:#|no\.?|number))?)"
+                rf"[\s:#.]*{_ID}", re.I), "MRN [removed]"),
+    # (c) DOB / D.O.B. / date of birth followed by a date
+    (re.compile(rf"\b(?:dob|d\.o\.b\.?|date\s+of\s+birth)[\s:\-]*{_DATE}", re.I), "DOB [removed]"),
+    # (e) Patient: Name / Pt name Name
+    (re.compile(rf"\b(?:patient|pt)(?:\s+name)?\s*:\s*{_NAME}|\bpt\.?\s+name\s+{_NAME}", re.I),
+     "Patient: [removed]"),
+]
+_PHONE_PATTERNS = [  # (d) only applied to Notes, and only phone-shaped text
+    re.compile(r"\b(?:tel|phone|ph|call|fax|cell)\.?\s*[:#]?\s*[\d(+][\d\s().+-]{5,}\d", re.I),
+    re.compile(r"(?<![\w-])(?:\+?\d{1,2}[\s.-])?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}(?![\w-])"),
+    re.compile(r"(?<![\w.-])\d{10,11}(?![\w.-])"),
+]
 
 
-def _redact_phi(text: str) -> str:
-    """Specimen-tube labels in the inventory carry patient IDs ("Pt. ID 0000000001-1"); never expose them."""
-    return PHI_RE.sub("Pt. ID [removed]", text)
+def _redact_phi(text: str, notes: bool = False) -> str:
+    """Remove patient identifiers: Pt ID, MRN, DOB, "Patient: Name" and (in Notes) phone numbers."""
+    for pattern, replacement in _PHI_PATTERNS:
+        text = pattern.sub(replacement, text)
+    if notes:
+        for pattern in _PHONE_PATTERNS:
+            text = pattern.sub("[phone removed]", text)
+    return text
 
 
 def get_inventory_records() -> list[dict]:
     """Inventory from the active source, with patient identifiers removed from every text field."""
-    return [{k: _redact_phi(v) if isinstance(v, str) else v for k, v in rec.items()}
+    return [{k: _redact_phi(v, notes=k.strip().lower() in ("notes", "note")) if isinstance(v, str) else v
+             for k, v in rec.items()}
             for rec in _load_inventory_records()]
 
 
@@ -470,7 +499,7 @@ async def list_requests():
     return read_request_rows(ws)
 
 
-@app.post("/api/requests")
+@app.post("/api/requests", dependencies=[Depends(rate_limit_post), Depends(require_hq)])  # legacy internal form: HQ only
 async def submit_request(body: SubmitRequestBody):
     inventory = get_inventory_records()
     valid_rows = {int(r["_sheet_row"]) for r in inventory if "_sheet_row" in r}

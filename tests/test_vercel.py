@@ -248,3 +248,13 @@ def test_vercelignore_keeps_secrets_out_but_allows_the_example():
     text = (ROOT / ".vercelignore").read_text()
     for pattern in (".env*", "!.env.example", "*.pem", "*.key", "*.p12", "*credentials*.json", "*gcreds*", ".git", ".venv"):
         assert pattern in text.splitlines(), pattern
+
+
+def test_internal_post_is_rate_limited_and_hq_gated(sheet_client):
+    import main
+    main._hits.clear()
+    body = {"nametag": "N", "items": [{"sheet_row": 2, "quantity": 1}]}
+    assert sheet_client.post("/api/requests", json=body).status_code == 401
+    ok = {"X-HQ-Token": "test-hq-token"}
+    codes = [sheet_client.post("/api/requests", json=body, headers=ok).status_code for _ in range(12)]
+    assert 429 in codes and codes[0] != 401

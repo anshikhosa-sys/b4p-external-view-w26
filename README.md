@@ -18,7 +18,8 @@ With `DATABASE_URL` set:
 - `GET /api/supplies` and `GET /inventory/availability` read the `dash_supplies` view.
 - `POST /requests`, `PATCH /requests/{id}/status` and `GET /requests[?email=]` use
   `create_request()`, `set_request_status()` and the `dash_requests` view.
-- Internal clinic requests (`/api/requests`) are not affected and still use the sheet.
+- Internal clinic requests (`GET` and `POST /api/requests`, served as `/api/api/requests` on Vercel) are not affected
+  and still use the sheet. Both are HQ-only (`X-HQ-Token`), and the POST is also rate limited per IP. The web UI does not call them.
 - `GET /health` returns `{"source": "postgres"|"sheet", "ok": true|false, "email": "brevo"|"resend"|"smtp"|null}`.
 
 All database access lives in `app/db.py` (views and functions are defined by the

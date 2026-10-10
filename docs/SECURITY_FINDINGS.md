@@ -463,7 +463,8 @@ off; inline email returns within the 5s budget (well under maxDuration 15s) even
 |----|-----|---------|--------|
 | V1 | Low-Med | OpenAPI docs/schema served in production | Fixed, verified (off on Vercel/Render unless ENABLE_API_DOCS=1) |
 | V2 | Low | .vercelignore misses common secret filenames | Fixed, verified (globs: .env*, *.pem, *.key, *credential*, *gcreds*, ...) |
-| V-PREVIEW | Medium | preview isolation depends on env vars being production-scoped | Documented (DEPLOY_VERCEL.md scope table); deploy check |
+| V-PREVIEW | Medium | preview isolation depends on env vars being production-scoped | Fixed, verified: previews are sandboxed in code even with secrets (only PREVIEW_ALLOW_REAL_DATA=true opts out) |
+| V4 | Medium | internal POST /api/requests (/api/api/requests) anonymous + unthrottled sheet writer | Open (test) |
 | V-STATE | Medium | in-memory rate limits / email caps are per-instance on serverless | Mitigated by required Vercel firewall rule (DEPLOY_VERCEL.md); app limits are best-effort |
 | V3 | Info | X-Forwarded-For trust behind Vercel's proxy | Fixed: reads x-vercel-forwarded-for, only when VERCEL is set (tested) |
 
@@ -523,3 +524,16 @@ never see a 429; and 37 remaining is "Available", not "Limited". I then found th
 `_ext_sample` cleared `TRUST_PROXY` after the test set it, so every request shared the "testclient" bucket. I moved the setting
 after the fixture and added a control: separate /64s must not share a bucket. Confirmed meaningful: it passes with `_ip_bucket` and
 fails when bucketing is replaced with the pre-fix per-address behavior.
+
+**V-PREVIEW re-verified (code fix).** `db.preview_sandboxed()` now forces demo data on `VERCEL_ENV=preview` even with
+DATABASE_URL, Google credentials and an email key set. From the `.env`-free copy, with the DB and Google blocked: db disabled,
+sample on, submit 200, zero emails, `/api/health` email null. Only `PREVIEW_ALLOW_REAL_DATA=true` (any case) opts out; `1` does
+not; production is unaffected. Test: `test_preview_is_sandboxed_even_with_secrets`. The internal `GET /api/requests` now requires
+X-HQ-Token (401 without, 200 with; `test_internal_request_list_needs_hq_token`).
+
+**V4 — anonymous internal sheet writer (Medium).** The old internal clinic form, `POST /api/requests` in main (on Vercel,
+`/api/api/requests`), still has no auth and no rate limit: 15 of 15 anonymous posts succeeded. The frontend never calls it (it
+only uses `/requests`), and the required Vercel firewall rule targets `/api/requests`, which on Vercel is the *org* endpoint, so
+it doesn't cover this path. In sheet mode anyone can append unlimited rows to the internal Requests tab and burn the shared Sheets
+quota, which also starves inventory reads for every clinic. Fix: add `dependencies=[Depends(require_hq)]` (as on the GET), or
+remove the route if nothing uses it. Test: `test_internal_request_submit_is_not_anonymous` (strict xfail).

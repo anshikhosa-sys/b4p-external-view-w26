@@ -389,3 +389,66 @@ def test_status_change_clears_this_instances_inventory_cache(sheet_client, no_em
     r = sheet_client.patch(f"/requests/{rid}/status", json={"status": "Approved"},
                            headers={"X-HQ-Token": "test-hq-token"})
     assert r.status_code == 200 and main._inventory_cache == {}
+
+
+# --- broader patient-data redaction (synthetic strings only) -------------------------
+
+@pytest.mark.parametrize("text,expected", [
+    ("Pt ID " "0000000001-1", "Pt. ID [removed]"),
+    ("PtID" "0000000002", "Pt. ID [removed]"),
+    ("pt.id: C000000003", "Pt. ID [removed]"),
+    ("Patient ID #A0000004", "Pt. ID [removed]"),
+    ("Pat ID " "0000000005", "Pt. ID [removed]"),
+    ("MRN " "0000006", "MRN [removed]"),
+    ("Med Rec # 0000007", "MRN [removed]"),
+    ("medical record number: 0000008", "MRN [removed]"),
+    ("DOB 01/02/1900", "DOB [removed]"),
+    ("D.O.B. 1900-01-02", "DOB [removed]"),
+    ("date of birth: Jan 2, 1900", "DOB [removed]"),
+    ("Patient: Test Person", "Patient: [removed]"),
+    ("Pt name Test Person", "Patient: [removed]"),
+    ("UR TEST FROZEN pt id " "0000000009 ST15 and DOB 1/2/1900", "UR TEST FROZEN Pt. ID [removed] ST15 and DOB [removed]"),
+])
+def test_patient_identifiers_are_redacted(text, expected):
+    import main
+    assert main._redact_phi(text) == expected
+
+
+@pytest.mark.parametrize("text", [
+    "REF 302995", "Lot 6106151", "18G x 1.5 in", "Sterile EO, expiration date 2030-11-07, quantity one",
+    "Patient-ready kit", "patient safety valve", "Pt ID label", "Lot 1234567890123", "Box 12 of 40",
+    "call before use", "Model DOB-100", "Medical record keeping supplies",
+])
+def test_product_text_is_not_redacted(text):
+    import main
+    assert main._redact_phi(text, notes=True) == text
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Call 555-123-4567 for pickup", "[phone removed] for pickup"),
+    ("(555) 123 4567", "[phone removed]"),
+    ("+1 555.123.4567", "[phone removed]"),
+    ("Tel: 555 1234", "[phone removed]"),
+    ("Contact 55512345678 now", "Contact [phone removed] now"),
+])
+def test_phone_numbers_are_redacted_in_notes_only(text, expected):
+    import main
+    assert main._redact_phi(text, notes=True) == expected
+    assert main._redact_phi(text) == text  # not in other fields: product codes live there
+
+
+def test_inventory_output_redacts_notes_and_names_but_keeps_product_codes(sheet_client, monkeypatch):
+    import main
+    rec = {"Name": "UR TEST Pt. ID " "0000000001-1 ST15", "Category": "Lab", "Quantity": "9", "Review": "",
+           "Notes": "Patient: Test Person, MRN " "0000006, call 555-123-4567. REF 302995 Lot 6106151",
+           "Lot Number": "5551234567", "_sheet_row": 2}
+    monkeypatch.setattr(main, "_load_inventory_records", lambda: [dict(rec)])
+    row = sheet_client.get("/api/supplies").json()[0]
+    assert "Test Person" not in row["Notes"] and "0000006" not in row["Notes"] and "555-123" not in row["Notes"]
+    assert "REF 302995" in row["Notes"] and "Lot 6106151" in row["Notes"]
+    assert "0000000001" not in row["Name"] and row["Lot Number"] == "5551234567"  # only Notes get phone rules
+
+
+def test_emails_never_include_notes():
+    source = (Path(__file__).resolve().parent.parent / "app" / "services" / "email.py").read_text().lower()
+    assert "notes" not in source

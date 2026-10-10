@@ -56,7 +56,8 @@ You need either `DATABASE_URL` or `GOOGLE_CREDENTIALS_JSON` + `GOOGLE_SHEET_ID` 
 The app's own rate limits live in memory, so each serverless instance counts separately. The real
 control for the public submit endpoint is Vercel's:
 
-Vercel -> Project -> Firewall -> Rate limiting rule: path `/api/requests`, method `POST`,
+Vercel -> Project -> Firewall -> Rate limiting rule: paths `/api/requests` and `/api/api/requests`
+(the org endpoint and the internal one, which is also HQ-token only), method `POST`,
 10 requests per minute per IP, action deny (429). Do the same for `GET /api/requests` if your plan
 allows several rules (the lookup limit is 20 per minute per IP in the app).
 

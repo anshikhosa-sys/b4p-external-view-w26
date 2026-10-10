@@ -354,7 +354,7 @@ def test_internal_api_requests_write_error_does_not_leak(live_sheet, monkeypatch
     c, _, req = live_sheet
     req.rows[:] = [main.REQ_HEADERS]
     req.fail = {"write"}
-    r = c.post("/api/requests", json={"nametag": "N", "items": [{"sheet_row": 2, "quantity": 1}]})
+    r = c.post("/api/requests", json={"nametag": "N", "items": [{"sheet_row": 2, "quantity": 1}]}, headers=HQ)
     assert r.status_code == 503
     _no_leak(r)
 
