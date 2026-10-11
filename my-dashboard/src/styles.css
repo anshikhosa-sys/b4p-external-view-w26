@@ -1664,8 +1664,8 @@ button:disabled {
   height: 48px;
   margin-bottom: 16px;
   border-radius: 50%;
-  background: var(--success-tint);
-  color: var(--success);
+  background: var(--success);
+  color: #fff;
 }
 
 .confirm__lead {

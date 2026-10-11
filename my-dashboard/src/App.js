@@ -30,6 +30,12 @@ const CONTACT_EMAIL = /^[^@\s<>"]+@[^@\s<>"]+\.[^@\s<>"]+$/.test(process.env.REA
   ? process.env.REACT_APP_CONTACT_EMAIL
   : 'contact@b4pglobal.org';
 const OVERLAYS = ['item', 'slip'];
+function newClientId() {
+  const c = window.crypto;
+  if (c && c.randomUUID) return c.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 const TITLES = { requests: 'My requests', checkout: 'Review your request', sent: 'Request submitted' };
 
 function enrich(rows) {
@@ -123,6 +129,7 @@ export default function App() {
   const [slipNotice, setSlipNotice] = useState(null);
   const [toast, setToast] = useState(null);
   const [lastSent, setLastSent] = useState(null);
+  const attemptRef = useRef(null);
 
   const setFilter = useCallback((key, value) => setFilters((f) => ({ ...f, [key]: value })), []);
   const clearFilters = () => setFilters(DEFAULT_FILTERS);
@@ -253,7 +260,7 @@ export default function App() {
       const product = productsById.get(l.id);
       return allocateFefo(product, l.quantity).map(({ item, quantity }) => ({
         item_name: item.requestName,
-        category: item.category,
+        category: item.category.slice(0, 200), // the server rejects longer values
         quantity,
         sheet_row: item.id,
       }));
@@ -261,10 +268,13 @@ export default function App() {
     if (payload.length > MAX_LINES) {
       throw new ApiError(`This request covers ${payload.length} separate lots, and one request can include ${MAX_LINES}. Remove a few supplies and send them in a second request.`);
     }
-    const res = await submitRequest(
-      { org_name: orgValues.name, org_email: orgValues.email, items: payload },
-      { onSlow },
-    );
+    // One id per distinct request: a retry after a timeout resends the same id, so the server
+    // returns the first request instead of creating a duplicate.
+    const body = { org_name: orgValues.name, org_email: orgValues.email, items: payload };
+    const key = JSON.stringify(body);
+    if (!attemptRef.current || attemptRef.current.key !== key) attemptRef.current = { key, id: newClientId() };
+    const res = await submitRequest({ ...body, client_request_id: attemptRef.current.id }, { onSlow });
+    attemptRef.current = null;
     setLastSent({
       id: res.request_id,
       lines: lines.map((l) => ({ id: l.id, name: l.name, quantity: l.quantity })),

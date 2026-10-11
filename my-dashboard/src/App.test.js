@@ -384,6 +384,7 @@ describe('review and confirmation', () => {
     expect(posts).toEqual([{
       org_name: 'Riverside Clinic',
       org_email: 'Staff@Riverside.org',
+      client_request_id: expect.stringMatching(/^[A-Za-z0-9-]{8,80}$/),
       items: [
         expect.objectContaining({ item_name: 'Synthetic 10ml Syringe [Lot L3, Box 2, Pallet 1]', quantity: 1, sheet_row: 3 }),
         expect.objectContaining({ quantity: 1, sheet_row: 6, item_name: expect.stringMatching(/L6/) }),
@@ -413,6 +414,32 @@ describe('review and confirmation', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Ghost product is no longer available. Remove it from your request, then submit again.');
     expect(posts).toHaveLength(0);
     expect(JSON.parse(window.localStorage.getItem(CART_KEY))).toHaveLength(3);
+  });
+
+  test('a retry after a failed submit reuses the same client_request_id; a new request gets a new one', async () => {
+    await toReview();
+    fill();
+    handlers.submit = () => Promise.reject(new TypeError('Failed to fetch'));
+    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    await screen.findByRole('alert');
+    handlers.submit = () => response(200, { request_id: RID, status: 'Under Review' });
+    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    await screen.findByRole('heading', { name: 'Request submitted' });
+    expect(posts).toHaveLength(2);
+    expect(posts[0].client_request_id).toMatch(/^[A-Za-z0-9-]{8,80}$/);
+    expect(posts[1].client_request_id).toBe(posts[0].client_request_id);
+  });
+
+  test('an over-long category cell is cut to the server limit of 200 characters', async () => {
+    handlers.supplies = () => response(200, [supply(3, { Name: 'Synthetic long category', Category: 'C'.repeat(300), Subcategory: 'Gloves', Quantity: '5' })]);
+    await renderAt('#/c/gloves', /^Synthetic long category$/);
+    userEvent.click(within(rowFor('Synthetic long category')).getByRole('button', { name: /^Add Synthetic long category to request$/ }));
+    go('#/review');
+    await screen.findByRole('heading', { name: 'Review your request' });
+    fill();
+    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    await screen.findByRole('heading', { name: 'Request submitted' });
+    expect(posts[0].items[0].category).toHaveLength(200);
   });
 
   test('a multi-lot product is sent as one line per lot, earliest expiry first', async () => {
