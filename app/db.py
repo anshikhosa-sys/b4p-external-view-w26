@@ -48,15 +48,21 @@ def request_exists(request_id: str) -> bool:
 
 
 def item_ids_for_rows(sheet_rows: list[int]) -> dict[int, dict]:
-    """sheet_row -> {"id", "names", "maker"} for rows that exist. The id survives syncs; the names (item
-    name and general name) and maker let the caller check the row is still the item the requester picked
-    (sheet rows shift on insert/delete)."""
+    """sheet_row -> {"id", "names", "maker", "lot", "box", "pallet", "same_name"} for rows that exist.
+
+    The id survives syncs. The rest lets the caller check the row is still the item the requester picked
+    (sheet rows shift on insert/delete): names (item and general name), maker, lot/box/pallet, and how
+    many active rows share the item name (more than one means a bare name is ambiguous)."""
     if not sheet_rows:
         return {}
-    rows = _query("SELECT sheet_row, id, name, gen_name, manufacturer FROM dash_items WHERE sheet_row = ANY(%s)",
-                  (list(set(sheet_rows)),))
-    return {int(r["sheet_row"]): {"id": r["id"], "names": [r["name"] or "", r["gen_name"] or ""],
-                                  "maker": r["manufacturer"] or ""} for r in rows}
+    rows = _query(
+        "SELECT d.sheet_row, d.id, d.name, d.gen_name, d.manufacturer, d.lot_number, d.box_number, d.pallet_number,"
+        " (SELECT count(*) FROM dash_items o WHERE lower(btrim(o.name)) = lower(btrim(d.name))) AS same_name"
+        " FROM dash_items d WHERE d.sheet_row = ANY(%s)", (list(set(sheet_rows)),))
+    return {int(r["sheet_row"]): {
+        "id": r["id"], "names": [r["name"] or "", r["gen_name"] or ""], "maker": r["manufacturer"] or "",
+        "lot": r["lot_number"] or "", "box": str(r["box_number"] or ""), "pallet": str(r["pallet_number"] or ""),
+        "same_name": int(r["same_name"])} for r in rows}
 
 
 def request_lines(request_id: str) -> list[dict]:

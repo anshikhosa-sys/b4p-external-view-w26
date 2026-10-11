@@ -848,16 +848,26 @@ def _item_id_for(line: "OrgCartItemIn", item_ids: dict) -> dict:
     someone inserts or deletes in the sheet between loading the catalog and submitting.
 
     The line name must be the row's name (or general name) with the lot suffix stripped, or, for items
-    shown as "Name (Maker)", that name followed by the row's own manufacturer."""
+    shown as "Name (Maker)", that name followed by the row's own manufacturer. A line that names its lot
+    ("[Lot X, Box Y, Pallet Z]") must match the row's lot, box and pallet. A bare name with no lot and no
+    maker is accepted only if exactly one active row has that name; otherwise another lot would match."""
     row = item_ids.get(line.sheet_row) if line.sheet_row else None
     if not row:
         return {}
     base = _norm_name(_base_item_name(line.item_name))
     names = {_norm_name(n) for n in row["names"] if n}
     maker = _norm_name(row["maker"]) if row["maker"] else ""
-    if base in names or (maker and any(base == f"{n} ({maker})" for n in names)):
-        return {"item_id": row["id"]}
-    return {}
+    with_maker = bool(maker) and any(base == f"{n} ({maker})" for n in names)
+    if base not in names and not with_maker:
+        return {}
+    parts = _lot_parts(line.item_name)
+    if parts:
+        have = (_norm_name(row["lot"]), _norm_name(row["box"]), _norm_name(row["pallet"]))
+        if any(want and want != got for want, got in zip(parts, have)):
+            return {}
+    elif not with_maker and row["same_name"] != 1:
+        return {}
+    return {"item_id": row["id"]}
 
 
 def _same_request(rows: list[dict], body: "OrgRequestBody") -> bool:

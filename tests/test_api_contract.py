@@ -92,52 +92,77 @@ def test_email_with_list_separators_is_rejected(client, email):
     assert r.status_code == 422
 
 
-def test_request_lines_keep_the_item_id_in_postgres_mode(client):
+def _items(client):
+    """Active inventory rows straight from the database (postgres mode only), with how often each name occurs."""
     if client.get("/health").json()["source"] != "postgres":
         pytest.skip("item ids exist only in the database")
-    supply = next(r for r in client.get("/api/supplies").json() if (r["Name"] or "").strip())
-    email = _email()
-    r = client.post("/requests", json={"org_name": "Item Clinic", "org_email": email, "items": [
-        {"item_name": supply["Name"], "quantity": 1, "sheet_row": supply["_sheet_row"]},
-        {"item_name": supply["Name"], "quantity": 1, "sheet_row": 499999},   # not an inventory row: no id, still saved
-        {"item_name": supply["Name"], "quantity": 1}]})
-    assert r.status_code == 200
-    rows = client.get("/requests", params={"email": email}).json()
-    assert len(rows) == 3
-    ids = sorted(row["Item ID"] for row in rows)
-    assert ids[:2] == ["", ""] and ids[2].isdigit()
+    import main
+    rows = main.db._query("SELECT sheet_row, id, name, manufacturer, lot_number, box_number, pallet_number FROM dash_items "
+                          "WHERE btrim(name) <> ''")
+    counts = {}
+    for r in rows:
+        counts[r["name"].strip().casefold()] = counts.get(r["name"].strip().casefold(), 0) + 1
+    return rows, counts
+
+
+def _suffix(r):
+    return f" [Lot {r['lot_number'] or '—'}, Box {r['box_number'] or '—'}, Pallet {r['pallet_number'] or '—'}]"
+
+
+def _ids_for(client, lines):
+    """One request per line (so identical names never collide); returns each line's stored Item ID."""
+    out = []
+    for name, row in lines:
+        email = _email()
+        r = client.post("/requests", json={"org_name": "Item Clinic", "org_email": email, "items": [
+            {"item_name": name, "quantity": 1, **({"sheet_row": row} if row else {})}]})
+        assert r.status_code == 200
+        out.append(client.get("/requests", params={"email": email}).json()[0]["Item ID"])
+    return out
+
+
+def test_request_lines_keep_the_item_id_in_postgres_mode(client):
+    rows, counts = _items(client)
+    one = next(r for r in rows if counts[r["name"].strip().casefold()] == 1)
+    ids = _ids_for(client, [(one["name"], one["sheet_row"]),                       # unambiguous bare name
+                            (one["name"], None),                                     # no sheet_row: nothing to look up
+                            ("Other " + one["name"], one["sheet_row"])])            # name does not match the row
+    assert ids[0] == one["id"] and ids[1] == "" and ids[2] == ""
 
 
 def test_item_id_is_dropped_when_the_sheet_row_has_shifted(client):
-    if client.get("/health").json()["source"] != "postgres":
-        pytest.skip("item ids exist only in the database")
-    supplies = [r for r in client.get("/api/supplies").json() if (r["Name"] or "").strip()]
-    a = supplies[0]
-    b = next(r for r in supplies if r["Name"].strip().casefold() != a["Name"].strip().casefold())
-    email = _email()
-    r = client.post("/requests", json={"org_name": "Shift Clinic", "org_email": email, "items": [
-        {"item_name": a["Name"] + " [Lot X, Box 1, Pallet 2]", "quantity": 1, "sheet_row": a["_sheet_row"]},  # still the same item
-        {"item_name": a["Name"].upper(), "quantity": 1, "sheet_row": a["_sheet_row"]},                      # same name, other case
-        {"item_name": a["Name"], "quantity": 1, "sheet_row": b["_sheet_row"]}]})                            # row now holds another item
-    assert r.status_code == 200
-    ids = sorted(row["Item ID"] for row in client.get("/requests", params={"email": email}).json())
-    assert ids[0] == "" and ids[1].isdigit() and ids[2].isdigit()
+    rows, counts = _items(client)
+    a = next(r for r in rows if counts[r["name"].strip().casefold()] == 1)
+    b = next(r for r in rows if r["name"].strip().casefold() != a["name"].strip().casefold())
+    ids = _ids_for(client, [(a["name"] + _suffix(a), a["sheet_row"]),              # still the same item
+                            (a["name"].upper() + _suffix(a), a["sheet_row"]),      # same item, other case
+                            (a["name"] + _suffix(a), b["sheet_row"])])                # the row now holds another item
+    assert ids[0] == a["id"] and ids[1] == a["id"] and ids[2] == ""
+
+
+def test_shifted_row_holding_another_lot_or_maker_of_the_same_name_gets_no_id(client):
+    rows, counts = _items(client)
+    by_name = {}
+    for r in rows:
+        by_name.setdefault(r["name"].strip().casefold(), []).append(r)
+    lots = next((v for v in by_name.values() if len({(x["lot_number"], x["box_number"], x["pallet_number"]) for x in v}) > 1), None)
+    if not lots:
+        pytest.skip("no product with two lots in the template data")
+    a, b = lots[0], next(x for x in lots if (x["lot_number"], x["box_number"], x["pallet_number"]) != (lots[0]["lot_number"], lots[0]["box_number"], lots[0]["pallet_number"]))
+    ids = _ids_for(client, [(a["name"] + _suffix(a), a["sheet_row"]),              # the lot picked is the lot at that row
+                            (a["name"] + _suffix(a), b["sheet_row"]),                # the row shifted onto another lot of the same name
+                            (a["name"], a["sheet_row"])])                          # bare name, but several rows share it
+    assert ids[0] == a["id"] and ids[1] == "" and ids[2] == ""
 
 
 def test_item_id_accepts_the_name_with_its_own_maker_in_brackets(client):
-    if client.get("/health").json()["source"] != "postgres":
-        pytest.skip("item ids exist only in the database")
-    rows = client.get("/api/supplies").json()
-    row = next(r for r in rows if (r["Name"] or "").strip() and (r["Manufacturer Name"] or "").strip())
-    name, maker = row["Name"].strip(), row["Manufacturer Name"].strip()
-    email = _email()
-    r = client.post("/requests", json={"org_name": "Maker Clinic", "org_email": email, "items": [
-        {"item_name": f"{name} ({maker})", "quantity": 1, "sheet_row": row["_sheet_row"]},            # the row's own maker
-        {"item_name": f"{name} ({maker.upper()})", "quantity": 1, "sheet_row": row["_sheet_row"]},     # same maker, other case
-        {"item_name": f"{name} (Some Other Maker)", "quantity": 1, "sheet_row": row["_sheet_row"]}]})  # not this row's maker
-    assert r.status_code == 200
-    ids = sorted(x["Item ID"] for x in client.get("/requests", params={"email": email}).json())
-    assert ids[0] == "" and ids[1].isdigit() and ids[2].isdigit()
+    rows, counts = _items(client)
+    row = next(r for r in rows if (r["manufacturer"] or "").strip() and counts[r["name"].strip().casefold()] == 1)
+    name, maker = row["name"].strip(), row["manufacturer"].strip()
+    ids = _ids_for(client, [(f"{name} ({maker})", row["sheet_row"]),               # the row's own maker
+                            (f"{name} ({maker.upper()})", row["sheet_row"]),        # same maker, other case
+                            (f"{name} (Some Other Maker)", row["sheet_row"])])      # not this row's maker
+    assert ids[0] == row["id"] and ids[1] == row["id"] and ids[2] == ""
 
 
 @pytest.mark.parametrize("cid", ["short", "has space in it", "x" * 81, "bad/chars-12345"])
