@@ -631,6 +631,13 @@ button:disabled {
   border-radius: var(--radius);
 }
 
+/* One column: there is no row to match, so cards are only as tall as their content. */
+@media (max-width: 600px) {
+  .cat {
+    min-height: 0;
+  }
+}
+
 .cat__title {
   display: flex;
   align-items: center;

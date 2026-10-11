@@ -31,8 +31,10 @@ for (const [cat, names] of Object.entries(TYPES)) {
     }
   }
 }
+const HELD = new Set(['Pulse oximeter']); // every lot of these is approved to someone else: shows "On hold"
 const avail = rows.map((r) => {
   const q = Number(r.Quantity);
+  if (HELD.has(r.Name)) return { sheet_row: r._sheet_row, item_name: r.Name, category: r.Category, availability_status: 'Requested', tags: ['Requested'], remaining: 0, requesting_org: null, request_id: null };
   return { sheet_row: r._sheet_row, item_name: r.Name, category: r.Category, availability_status: q <= 5 ? 'Limited' : 'Available', tags: [q <= 5 ? 'Low Stock' : 'Available'], remaining: q, requesting_org: null, request_id: null };
 });
 

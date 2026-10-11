@@ -1,7 +1,7 @@
 // Synthetic supply names by subcategory: no real inventory, no patient IDs.
 // Shared by scripts/mock-server.js and the icon coverage test (src/iconCoverage.test.js).
 const TYPES = {
-  'Wound Care & Bandages': ['Gauze pads 4x4', 'Adhesive bandages', 'Elastic bandage 4 in', 'Triangular bandage', 'Wound dressing, sterile', 'Medical tape 1 in', 'Hydrocolloid dressing', 'Petrolatum gauze'],
+  'Wound Care & Bandages': ['Gauze pads 4x4', 'Adhesive bandages', 'Elastic bandage 4 in', 'Triangular bandage', 'Wound dressing, sterile', 'Medical tape 1 in', 'Hydrocolloid dressing', 'Petrolatum gauze', 'Café wrap bandage'],
   Gloves: ['Nitrile gloves (M)', 'Nitrile gloves (L)', 'Surgical masks', 'N95 respirator', 'Isolation gown', 'Face shield', 'Shoe covers', 'Bouffant cap', 'Digital thermometer', 'Elastic bandage', 'Stethoscope', 'Syringe 3 mL'],
   'Needles & Syringes': ['Syringe 3 mL', 'Syringe 5 mL', 'Syringe 10 mL', 'Needle 21G', 'Needle 25G', 'Safety needle 23G', 'Alcohol prep pads', 'Sharps container'],
   'Vitals & Home Health': ['Digital thermometer', 'Pulse oximeter', 'Blood pressure cuff', 'Glucose test strips', 'Urine test strips', 'Otoscope speculum', 'Stethoscope', 'Malaria rapid test'],
