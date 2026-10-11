@@ -322,14 +322,45 @@ _PHONE_PATTERNS = [  # (d) only applied to Notes, and only phone-shaped text (ba
 ]
 
 
+# Same spans as the database's redact_phi() (docs/CONTRACT.md in Blueprints_DB); shared cases in
+# tests/test_phi_parity.py. Patterns use \b where Postgres uses \y.
+_TOKEN = r"(?:(?!ID\b)[A-Z]{1,3}\b|[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)"
+_PRODUCT_WORDS = (
+    "Return|Starter|Slippers?|Use|Monitoring|Monitor|Disposable|Belonging|Belongings|Lift|Transfer|Care|"
+    "Controlled|Warming|Gown|Bed|Safety|Restraint|Positioning|Education|Comfort|Handling|Ready|"
+    "Preoperative|Preparation|Specimen|Sample|Identification|Information|Wristband|Wipes?|Isolation|"
+    "Support|Cart|Chair|Hygiene|Bathing|Skin|Lifting|Slide|Sling|Aid|Kit|Supplies|Access|Contact|"
+    "Cooling|Heating|Side|Ports?|Cable|Circuit|Interface|Sitter|Cuff|Lines?|Hose|Tubing|Mask"
+)
+_PHI_SHARED = [
+    (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[email removed]"),
+    # "Pt 12345", "Patient 12345", "PT 1234", "pt#12", "Pt. No 7": keyword, optional ID/#/No, then ID-like tokens
+    (re.compile(rf"\b(?:[Pp][Tt]\b\.?|[Pp][Aa][Tt][Ii][Ee][Nn][Tt]\b)(?:\s*(?:[Ii][Dd]\b|#|[Nn][Oo]\b\.?))?[\s:#,.]*"
+                rf"{_TOKEN}(?:[\s,]+{_TOKEN}){{0,3}}"), "Pt. ID [removed]"),
+    # "Patient John Smith" (two capitalised words that are not a product phrase) and "Pt: J. Smith"
+    (re.compile(rf"\b(?:[Pp][Tt]\b\.?|[Pp]atient\b)(?:(?:\s+[Nn]ame)?\s*:\s*(?!ID\b)[A-Z][A-Za-z'-]*\.?"
+                rf"(?:\s+[A-Z][A-Za-z'-]*\.?){{0,2}}|\s+(?!(?:{_PRODUCT_WORDS})\b)[A-Z][a-z]+(?:\s+[A-Z]\.)?\s+[A-Z][a-z]+)"),
+     "Pt. [name removed]"),
+    (re.compile(r"\b[A-Z][0-9]{2}-[0-9]{3}\b"), "[id removed]"),  # research-subject / specimen ID
+]
+_INVISIBLE = re.compile("[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]")
+
+
 def _redact_phi(text: str, notes: bool = False) -> str:
-    """Remove patient identifiers: Pt ID, MRN, DOB, "Patient: Name" and (in Notes) phone numbers."""
+    """Remove patient identifiers: Pt ID, MRN, DOB, "Patient: Name", subject IDs, emails and (in Notes) phones.
+
+    Hidden characters are dropped and look-alike forms folded (NFKC) before matching. Text with
+    nothing to remove comes back exactly as it was."""
+    folded = unicodedata.normalize("NFKC", _INVISIBLE.sub("", text))
+    out = folded
     for pattern, replacement in _PHI_PATTERNS:
-        text = pattern.sub(replacement, text)
+        out = pattern.sub(replacement, out)
+    for pattern, replacement in _PHI_SHARED:
+        out = pattern.sub(replacement, out)
     if notes:
         for pattern in _PHONE_PATTERNS:
-            text = pattern.sub("[phone removed]", text)
-    return text
+            out = pattern.sub("[phone removed]", out)
+    return text if out == folded else out
 
 
 _PT_ID_SHAPE = re.compile(r"\b[A-Z]?\d{9,10}-[0-9A-Z]{1,2}\b")  # the shape of a patient ID, label or not
