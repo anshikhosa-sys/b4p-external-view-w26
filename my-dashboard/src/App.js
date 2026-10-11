@@ -17,7 +17,7 @@ import { EmptyState, ErrorState, SkeletonTable, WakingNotice } from './component
 import { closeTo, navigate, useDebounced, useHashRoute, useMediaQuery } from './hooks';
 import {
   allocateFefo, applyAvailability, applyBaseFilters, buildCatalog, formatDateTime, groupByType, groupProducts,
-  matchingTypes, normalizeInventory,
+  matchingTypes, normalizeInventory, rankByRelevance,
   searchForms,
 } from './inventory';
 import { clearInventoryCache, readInventoryCache, writeInventoryCache } from './inventoryCache';
@@ -182,7 +182,9 @@ export default function App() {
   const searchView = useMemo(() => {
     if (!query) return null;
     const visible = applyBaseFilters(products, { ...effective, query });
-    return { types: matchingTypes(catalog, query), groups: groupByType(visible), count: visible.length };
+    const { own, other } = rankByRelevance(visible, query);
+    const groups = [...groupByType(own), ...groupByType(other).map((g) => ({ ...g, alsoMatched: true }))];
+    return { types: matchingTypes(catalog, query), groups, count: visible.length };
   }, [query, products, catalog, effective]);
 
   // Once fresh inventory arrives, re-check what's saved on the request.

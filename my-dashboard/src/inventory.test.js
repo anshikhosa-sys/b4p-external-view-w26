@@ -1,5 +1,6 @@
 import {
   allocateFefo,
+  rankByRelevance,
   matchingTypes,
   baseRequestName,
   suppliesLabel,
@@ -730,6 +731,19 @@ describe('held lots', () => {
     expect(p.onHold).toBe(true);
     expect(p.quantity).toBe(0);
     expect(canRequest(p)).toBe(false);
+  });
+});
+
+describe('search ranking', () => {
+  const mk = (id, name, sub) => normalizeItem({ _sheet_row: id, Name: name, Subcategory: sub }, TODAY);
+  const items = [mk(2, 'Alcohol prep pads', 'Needles & Syringes'), mk(3, 'Syringe 5 mL', 'Needles & Syringes'), mk(4, 'Gauze', 'Wound Care')];
+  test('supplies that say the word come first; category-only matches follow', () => {
+    const { own, other } = rankByRelevance(items.filter((i) => matchesSearch(i, 'syringes')), 'syringes');
+    expect(own.map((i) => i.name)).toEqual(['Syringe 5 mL']);
+    expect(other.map((i) => i.name)).toEqual(['Alcohol prep pads']);
+  });
+  test('category text still finds supplies (nothing is filtered out)', () => {
+    expect(matchesSearch(items[0], 'needles')).toBe(true);
   });
 });
 

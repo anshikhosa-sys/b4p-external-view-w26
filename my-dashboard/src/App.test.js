@@ -201,6 +201,17 @@ describe('search', () => {
     expect(screen.queryByText('Unnamed supply')).not.toBeInTheDocument();
   });
 
+  test('a supply matching only through its category is listed after a heading, not dropped', async () => {
+    handlers.supplies = () => response(200, [...SUPPLIES, supply(9, { Name: 'Alcohol prep pads', General: 'alcohol prep', Subcategory: 'Needles & Syringes', Quantity: '9' })]);
+    await renderAt('#/');
+    fireEvent.change(screen.getByLabelText('Search supplies'), { target: { value: 'syringe' } });
+    expect(await screen.findByRole('heading', { level: 2, name: 'Also in matching categories' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Alcohol prep pads$/ })).toBeInTheDocument();
+    const heading = screen.getByRole('heading', { level: 2, name: 'Also in matching categories' });
+    const own = screen.getByRole('button', { name: /^Synthetic 10ml Syringe$/ });
+    expect(own.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   test('no results offers Clear search, which returns to the catalog', async () => {
     await renderAt('#/');
     fireEvent.change(screen.getByLabelText('Search supplies'), { target: { value: 'zzzz' } });

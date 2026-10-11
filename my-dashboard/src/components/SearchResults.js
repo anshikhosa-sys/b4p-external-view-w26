@@ -37,8 +37,13 @@ export default function SearchResults({ query, types, groups, count, filters, se
         </EmptyState>
       ) : (
         <>
-          {shown.map(({ group, limit }) => (
-            <TypeTable key={group.slug} group={group} limit={limit} {...tableProps} />
+          {shown.map(({ group, limit }, i) => (
+            <div key={`${group.alsoMatched ? 'b' : 'a'}${group.slug}`}>
+              {group.alsoMatched && !(i > 0 && shown[i - 1].group.alsoMatched) && (
+                <h2 className="section-title">Also in matching categories</h2>
+              )}
+              <TypeTable group={group} limit={limit} {...tableProps} />
+            </div>
           ))}
           {used >= capped && capped < count && (
             <div className="more">

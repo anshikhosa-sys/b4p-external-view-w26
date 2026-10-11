@@ -187,7 +187,9 @@ export function normalizeItem(raw, today = new Date()) {
     needsReview: str(raw['Review']).toLowerCase() === 'yes',
   };
   item.requestName = requestName(item, usableName);
-  item.searchText = searchForms([item.name, item.general, item.manufacturer, item.lot, item.notes, item.subcategory].join(' '));
+  // What the supply itself says (name, maker, lot...) ranks above matches on its category name alone.
+  item.primaryText = searchForms([item.name, item.general, item.manufacturer, item.lot, item.notes].join(' '));
+  item.searchText = `${item.primaryText} ${searchForms(item.subcategory)}`;
   return item;
 }
 
@@ -265,6 +267,16 @@ export function applyBaseFilters(items, { query = '', inStockOnly = false, hideE
     if (hideExpiring && (item.allExpiring ?? item.expiryState)) return false;
     return terms.every((term) => hasTerm(item.searchText, term));
   });
+}
+
+// Search results in two groups: supplies whose own text matches, then the ones that matched only
+// through their category or type name ("syringes" also lists the rest of Needles & Syringes).
+export function rankByRelevance(items, query) {
+  const terms = searchTerms(query);
+  const own = [];
+  const other = [];
+  for (const item of items) (terms.every((term) => hasTerm(item.primaryText ?? item.searchText, term)) ? own : other).push(item);
+  return { own, other };
 }
 
 export function subcategoryCounts(items) {
@@ -496,6 +508,7 @@ export function groupProducts(items, holds = {}) {
       onHold: everyLotHeld,
       heldIds,
       searchText: [...new Set(lots.map((l) => l.searchText))].join(' '),
+      primaryText: [...new Set(lots.map((l) => l.primaryText))].join(' '),
     };
   });
 }

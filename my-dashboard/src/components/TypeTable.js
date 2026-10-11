@@ -48,8 +48,8 @@ const ProductRow = memo(function ProductRow({ p, group, quantity, onQuantity, on
           {!p.expiry ? '–' : <>{many && <span className="exp-from">from </span>}{formatMonth(p.expiry)}</>}
         </td>
         <td className="spec__stock num" data-label="In stock">
-          <span className="visually-hidden">{stockLabel(p.quantity)}</span>
-          <span aria-hidden="true">{qty(p.quantity)}</span>
+          <span className="visually-hidden">{p.onHold ? 'On hold' : stockLabel(p.quantity)}</span>
+          <span aria-hidden="true">{p.onHold ? '–' : qty(p.quantity)}</span>
         </td>
         <td className="spec__qty">
           <RequestControl item={p} quantity={quantity} onChange={(n) => onQuantity(p, n)} compact />
@@ -91,7 +91,7 @@ const ProductRow = memo(function ProductRow({ p, group, quantity, onQuantity, on
 function TypeTable({ group, quantities, onQuantity, onOpenItem, limit, headingLevel = 2 }) {
   const Heading = `h${headingLevel}`;
   const rows = limit ? group.items.slice(0, limit) : group.items;
-  const headingId = `type-${group.slug}${group.category ? `-${group.category.slug}` : ''}`;
+  const headingId = `type-${group.slug}${group.category ? `-${group.category.slug}` : ''}${group.alsoMatched ? '-also' : ''}`;
   return (
     <section className="type" id={headingId} aria-labelledby={`${headingId}-h`} tabIndex={-1}>
       <div className="type__head">
