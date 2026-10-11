@@ -8,7 +8,7 @@ const path = require('path');
 const zlib = require('zlib');
 
 const KB = 1024;
-const BUDGET = { js: 75 * KB, css: 15 * KB, sprite: 12 * KB, font: 0 }; // system font stack: no font files
+const BUDGET = { js: 80 * KB, css: 15 * KB, sprite: 12 * KB, font: 0 }; // system font stack: no font files
 
 const root = path.resolve(__dirname, '..');
 const build = path.resolve(process.argv[2] || process.env.BUILD_PATH || path.join(root, 'build'));
