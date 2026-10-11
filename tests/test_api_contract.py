@@ -92,6 +92,22 @@ def test_email_with_list_separators_is_rejected(client, email):
     assert r.status_code == 422
 
 
+def test_request_lines_keep_the_item_id_in_postgres_mode(client):
+    if client.get("/health").json()["source"] != "postgres":
+        pytest.skip("item ids exist only in the database")
+    supply = next(r for r in client.get("/api/supplies").json() if (r["Name"] or "").strip())
+    email = _email()
+    r = client.post("/requests", json={"org_name": "Item Clinic", "org_email": email, "items": [
+        {"item_name": supply["Name"], "quantity": 1, "sheet_row": supply["_sheet_row"]},
+        {"item_name": supply["Name"], "quantity": 1, "sheet_row": 499999},   # not an inventory row: no id, still saved
+        {"item_name": supply["Name"], "quantity": 1}]})
+    assert r.status_code == 200
+    rows = client.get("/requests", params={"email": email}).json()
+    assert len(rows) == 3
+    ids = sorted(row["Item ID"] for row in rows)
+    assert ids[:2] == ["", ""] and ids[2].isdigit()
+
+
 @pytest.mark.parametrize("cid", ["short", "has space in it", "x" * 81, "bad/chars-12345"])
 def test_client_request_id_shape_is_validated(client, cid):
     r = client.post("/requests", json={"org_name": "O", "org_email": _email(),

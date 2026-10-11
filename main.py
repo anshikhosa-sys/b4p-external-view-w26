@@ -983,9 +983,14 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
                 raise _client_id_conflict()
             return {"request_id": request_id, "status": "Under Review"}  # a true retry: no second email
         flags = _review_flags(body)
+        try:  # the inventory item each line was picked from; a lookup failure never blocks the request
+            item_ids = db.item_ids_for_rows([i.sheet_row for i in body.items if i.sheet_row])
+        except Exception:
+            item_ids = {}
         request_id = db.create_request(body.org_name, body.org_email, [
             {"item_name": i.item_name, "category": i.category, "quantity": i.quantity,
-             "review_flag": flag}
+             "review_flag": flag,
+             **({"item_id": item_ids[i.sheet_row]} if i.sheet_row in item_ids else {})}
             for i, flag in zip(body.items, flags)
         ], request_id=request_id if body.client_request_id else None)
         _queue_submit_emails(tasks, body, request_id,
