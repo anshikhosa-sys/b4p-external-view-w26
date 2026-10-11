@@ -47,6 +47,11 @@ def request_exists(request_id: str) -> bool:
     return bool(_query("SELECT 1 FROM dash_requests WHERE \"Request ID\" = %s LIMIT 1", (request_id,)))
 
 
+def request_lines(request_id: str) -> list[dict]:
+    return _query('SELECT "Org Name", "Org Email", "Item Name", "Quantity Requested" FROM dash_requests '
+                  'WHERE "Request ID" = %s', (request_id,))
+
+
 def create_request(org_name: str, org_email: str, items: list[dict], request_id: str | None = None) -> str:
     """items: [{"item_name", "category", "quantity", "review_flag"}] -> 'REQ-<epoch>-<nnn>'.
 

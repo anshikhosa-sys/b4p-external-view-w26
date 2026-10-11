@@ -56,6 +56,42 @@ def test_retry_with_same_client_request_id_creates_one_request(client):
     assert other.json()["request_id"] != first.json()["request_id"]
 
 
+def test_reusing_a_client_request_id_for_a_different_request_is_a_409_that_leaks_nothing(client):
+    cid, name = uuid.uuid4().hex, _name(client)
+    mine = {"org_name": "Clash Clinic", "org_email": _email(), "client_request_id": cid,
+            "items": [{"item_name": name, "quantity": 1}]}
+    first = client.post("/requests", json=mine)
+    assert first.status_code == 200
+    rid = first.json()["request_id"]
+    for other in (
+        {**mine, "items": [{"item_name": name, "quantity": 2}]},          # different body
+        {**mine, "org_name": "Someone Else", "org_email": _email()},      # different clinic
+    ):
+        r = client.post("/requests", json=other)
+        assert r.status_code == 409
+        assert rid not in r.text and "Clash Clinic" not in r.text
+    assert client.post("/requests", json=mine).json()["request_id"] == rid  # the true retry still works
+
+
+def test_org_name_and_category_are_redacted_like_item_names(client):
+    email = _email()
+    r = client.post("/requests", json={
+        "org_name": "Clinic Pt 12345 jane.doe@example.org", "org_email": email,
+        "items": [{"item_name": _name(client), "category": "Tubes A12-345 for Patient: Test Person", "quantity": 1}]})
+    assert r.status_code == 200
+    row = client.get("/requests", params={"email": email}).json()[0]
+    for field in ("Org Name", "Category"):
+        for secret in ("12345", "jane.doe@example.org", "A12-345", "Test Person"):
+            assert secret not in row[field], (field, row[field])
+
+
+@pytest.mark.parametrize("email", ["a@b,c.org", "a@b.org,evil@x.org", "a;b@c.org", "a@b.org;c@d.org", "a,b@c.org"])
+def test_email_with_list_separators_is_rejected(client, email):
+    r = client.post("/requests", json={"org_name": "O", "org_email": email,
+                                       "items": [{"item_name": _name(client), "quantity": 1}]})
+    assert r.status_code == 422
+
+
 @pytest.mark.parametrize("cid", ["short", "has space in it", "x" * 81, "bad/chars-12345"])
 def test_client_request_id_shape_is_validated(client, cid):
     r = client.post("/requests", json={"org_name": "O", "org_email": _email(),

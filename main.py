@@ -300,7 +300,8 @@ def _load_inventory_records() -> list[dict]:
 # Conservative on purpose: every pattern needs a keyword (Pt ID, MRN, DOB, Patient:, phone) so lot
 # numbers and product codes ("REF 302995", "Lot 6106151", "18G") are left alone.
 _ID = r"(?=[A-Z0-9-]*\d)[A-Z0-9][A-Z0-9-]*"  # an identifier token that contains a digit
-_NAME = r"(?-i:[A-Z][a-zA-Z'’.-]*)(?:[ ,]+(?-i:[A-Z][a-zA-Z'’.-]*)){0,3}"
+_WORD = r"(?-i:[A-ZÀ-Þ](?:[^\W\d_]|['’.-])*)"  # a capitalised name word, accents and apostrophes included
+_NAME = rf"{_WORD}(?:[ ,]+{_WORD}){{0,3}}"
 _DATE = (r"(?:\d{1,4}[/.\-]\d{1,2}[/.\-]\d{1,4}"
          r"|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{2,4})")
 _PHI_PATTERNS = [
@@ -322,43 +323,119 @@ _PHONE_PATTERNS = [  # (d) only applied to Notes, and only phone-shaped text (ba
 ]
 
 
-# Same spans as the database's redact_phi() (docs/CONTRACT.md in Blueprints_DB); shared cases in
-# tests/test_phi_parity.py. Patterns use \b where Postgres uses \y.
-_TOKEN = r"(?:(?!ID\b)[A-Z]{1,3}\b|[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)"
-_PRODUCT_WORDS = (
-    "Return|Starter|Slippers?|Use|Monitoring|Monitor|Disposable|Belonging|Belongings|Lift|Transfer|Care|"
-    "Controlled|Warming|Gown|Bed|Safety|Restraint|Positioning|Education|Comfort|Handling|Ready|"
-    "Preoperative|Preparation|Specimen|Sample|Identification|Information|Wristband|Wipes?|Isolation|"
-    "Support|Cart|Chair|Hygiene|Bathing|Skin|Lifting|Slide|Sling|Aid|Kit|Supplies|Access|Contact|"
-    "Cooling|Heating|Side|Ports?|Cable|Circuit|Interface|Sitter|Cuff|Lines?|Hose|Tubing|Mask"
-)
-_PHI_SHARED = [
-    (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[email removed]"),
-    # "Pt 12345", "Patient 12345", "PT 1234", "pt#12", "Pt. No 7": keyword, optional ID/#/No, then ID-like tokens
-    (re.compile(rf"\b(?:[Pp][Tt]\b\.?|[Pp][Aa][Tt][Ii][Ee][Nn][Tt]\b)(?:\s*(?:[Ii][Dd]\b|#|[Nn][Oo]\b\.?))?[\s:#,.]*"
-                rf"{_TOKEN}(?:[\s,]+{_TOKEN}){{0,3}}"), "Pt. ID [removed]"),
-    # "Patient John Smith" (two capitalised words that are not a product phrase) and "Pt: J. Smith"
-    (re.compile(rf"\b(?:[Pp][Tt]\b\.?|[Pp]atient\b)(?:(?:\s+[Nn]ame)?\s*:\s*(?!ID\b)[A-Z][A-Za-z'-]*\.?"
-                rf"(?:\s+[A-Z][A-Za-z'-]*\.?){{0,2}}|\s+(?!(?:{_PRODUCT_WORDS})\b)[A-Z][a-z]+(?:\s+[A-Z]\.)?\s+[A-Z][a-z]+)"),
-     "Pt. [name removed]"),
-    (re.compile(r"\b[A-Z][0-9]{2}-[0-9]{3}\b"), "[id removed]"),  # research-subject / specimen ID
-]
+# Same spans as the database's redact_phi() (see b4p/normalize.py in Blueprints_DB, copied below;
+# tests/test_phi_parity.py runs one table of cases through both). Patterns use \b where Postgres uses \y.
+# --- copied from Blueprints_DB b4p/normalize.py (keep in step) ---
+_ID_TOKEN = r"(?:(?!ID\b)[A-Z]{1,3}\b(?![\'\u2019-])|[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)"
+PATIENT_ID_RE = re.compile(
+    r"\b(?:[Pp][Tt]\b\.?|[Pp][Aa][Tt][Ii][Ee][Nn][Tt]\b)"
+    r"(?:\s*(?:[Ii][Dd]\b|#|[Nn][Oo]\b\.?))?[\s:#,.]*"
+    + _ID_TOKEN + r"(?:[\s,]+" + _ID_TOKEN + r"){0,3}")
+
+
+# Research-subject / specimen ID on trial sample tubes ("A00-000", "a00 - 000").
+# Mirrors b4p_subject_id_pattern() in sql/schema.sql.
+SUBJECT_ID_PATTERN = r"\b[A-Za-z][0-9]{2}\s*-\s*[0-9]{3}\b"
+SUBJECT_ID_RE = re.compile(SUBJECT_ID_PATTERN)
+
+# Letters of any common script (written out so it does not depend on the database locale)
+_L = r"A-Za-zÀ-ɏͰ-ϿЀ-ӿḀ-ỿ"
+_T = r"[" + _L + r"][" + _L + r"'’.-]*"        # one name token: José, O'Brien, J., Smith-Jones
+
+# Ordinary supply words that follow "Patient" in product names ("Patient Gait Belt").
+# They are never taken for a surname. Matching is case-insensitive; a plural -s/-es is allowed.
+_STOP_WORDS = (
+    "id|name|return|starter|slipper|use|used|monitoring|monitor|disposable|reusable|single|sterile|belonging|"
+    "lift|lifter|lifting|transfer|care|controlled|warming|warmer|gown|bed|safety|restraint|positioning|"
+    "positioner|wedge|education|comfort|handling|ready|preoperative|preparation|specimen|sample|identification|"
+    "information|wristband|armband|bracelet|band|wipe|isolation|support|cart|chair|hygiene|bathing|bath|skin|"
+    "cleanser|slide|sheet|sling|aid|kit|supply|supplies|access|contact|cooling|heating|side|port|cable|circuit|"
+    "interface|sitter|cuff|line|hose|tubing|mask|wound|dressing|glove|drape|cover|pillow|blanket|bag|cap|label|"
+    "chart|record|data|room|left|right|instruction|tray|scale|thermometer|electrode|hoist|board|belt|shoe|sock|"
+    "brief|diaper|underpad|pad|urinal|bedpan|commode|walker|wheelchair|stretcher|mattress|towel|washcloth|"
+    "cloth|wash|hand|basin|item|product|set|pack|call|cord|alarm|garment|scrub|cushion|table|folder|transport|"
+    "oxygen|suction|canister|gait|fall|mat|protection|turn|assist|valuable|pressure|simulator|gauze|needle|"
+    "syringe|bandage|tape|hearing|hair|bib|temperature|probe|sensor|lead|system|pump|analgesia|catheter|"
+    "bottle|container|cup|pitcher|tube|valve|filter|adapter|connector|clip|strap|harness|vest|garment|sleeve|"
+    "stocking|boot|splint|brace|collar|rail|pole|stand|lamp|light|camera|phone|remote|control|button|switch|"
+    "screen|display|software|program|plan|form|sticker|stamp|marker|pen|pencil|paper|envelope|file|binder")
+_STOP = r"(?:" + _STOP_WORDS + r")(?:e?s)?"
+_NAMEWORD = r"[" + _L + r"][" + _L + r"'\u2019-]*"
+
+# A person's name after "Patient:" / "Pt. Name:" (any case): up to three words, or "Last, First".
+# After a plain dash ("Patient - Smith, John") a product word doesn't count as a name.
+# Mirrors b4p_patient_name_pattern() in sql/schema.sql.
+PATIENT_NAME_PATTERN = (r"(?i)\b(?:pt\b\.?|patient\b)(?:\s+name)?\s*(?::\s*(?!id\b)NAME|-\s*(?!(?:" + _STOP + r"|id)\b)NAME)")
+PATIENT_NAME_PATTERN = PATIENT_NAME_PATTERN.replace("NAME",
+    _T + r"(?:\s*,\s*" + _T + r"(?:\s+" + _T + r")?|(?:\s+" + _T + r"){0,2})")
+PATIENT_NAME_RE = re.compile(PATIENT_NAME_PATTERN)
+
+# A name straight after Patient / Pt. with no colon ("Patient Johnson", "pt. smith"): one or two
+# words that are not ordinary supply words, followed by the end of the text, a comma, DOB/MRN/ID or
+# a number. ("Patient Gait Belt", "Patient Oxygen Tubing" and "patient use only" are products.)
+# Mirrors b4p_patient_surname_pattern() in sql/schema.sql.
+PATIENT_SURNAME_PATTERN = (r"(?i)(?<![0-9])(?<![0-9]\s)\b(?:pt\b\.?|patient\b)\s+(?!" + _STOP + r"\b)" + _NAMEWORD
+                           + r"(?:\s+[" + _L + r"]\.)?(?:\s+(?!" + _STOP + r"\b)" + _NAMEWORD + r")?"
+                           + r"(?=\.?\s*$|\s*[,;]|\s+(?:dob|mrn|id)\b|\s*[0-9])")
+PATIENT_SURNAME_RE = re.compile(PATIENT_SURNAME_PATTERN)
+
+# Date of birth: numeric, "March 3 1980" or "3rd March 1980", after DOB / born (on)
+_MON = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+DOB_PATTERN = (r"(?i)\b(?:dob|d\.o\.b\.?|date of birth|born(?:\s+on)?)[\s:]*(?:[0-9]{1,4}[-/.][0-9]{1,2}[-/.][0-9]{1,4}"
+               r"|" + _MON + r"\s+[0-9]{1,2}(?:st|nd|rd|th)?,?\s+[0-9]{2,4}"
+               r"|[0-9]{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?" + _MON + r",?\s+[0-9]{2,4})")
+DOB_RE = re.compile(DOB_PATTERN)
+SSN_PATTERN = r"\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b"
+SSN_RE = re.compile(SSN_PATTERN)
+
+# Zero-width / bidi / soft-hyphen characters people (or scanners) slip into text
+_INVISIBLE_RE = re.compile("[­؜​-‏‪-‮⁠-⁤⁦-⁩﻿]")
+# Dash look-alikes -> '-', and Cyrillic/Greek letters that look like Latin ones -> Latin
+_DASH_FROM = "‐‑‒–—―−"
+_HOMOGLYPHS = {  # Cyrillic and Greek letters -> the Latin letter they look like
+    "\u0430\u0435\u043e\u0440\u0441\u0445\u0443\u0456\u0458\u0455\u043a\u043c\u0442\u043d\u0432": "aeopcxyijskmtnb",
+    "\u0410\u0412\u0415\u041a\u041c\u041d\u041e\u0420\u0421\u0422\u0425\u0423\u0406\u0408\u0405": "ABEKMHOPCTXYIJS",
+    "\u03bf\u03c1\u03bd\u03c4\u03b1\u03b5\u03b9\u03ba\u03c5\u03c7": "opvtaeikux",
+    "\u0391\u0392\u0395\u0396\u0397\u0399\u039a\u039c\u039d\u039f\u03a1\u03a4\u03a5\u03a7": "ABEZHIKMNOPTYX",
+}
+HOMOGLYPH_FROM = "".join(_HOMOGLYPHS)
+HOMOGLYPH_TO = "".join(_HOMOGLYPHS.values())
+assert len(HOMOGLYPH_FROM) == len(HOMOGLYPH_TO)
+_FOLD_TABLE = str.maketrans(_DASH_FROM + HOMOGLYPH_FROM, "-" * len(_DASH_FROM) + HOMOGLYPH_TO)
+# --- end copy ---
+_EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_MRN_RE = re.compile(r"\b(?:[Mm][Rr][Nn]|[Mm][Rr]#|[Mm]ed(?:ical)?\s*[Rr]ec(?:ord)?\s*(?:#|[Nn]o\.?|[Nn]umber))"
+                     r"[\s:#.]*[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*")
+_US_PHONE_RE = re.compile(r"(?:\+?1[\s.-]?)?(?:\([0-9]{3}\)\s?|\b[0-9]{3}[\s.-])[0-9]{3}[\s.-][0-9]{4}\b")
 _INVISIBLE = re.compile("[\u00ad\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]")
+_FOLD_TABLE = str.maketrans(_DASH_FROM + HOMOGLYPH_FROM, "-" * len(_DASH_FROM) + HOMOGLYPH_TO)
+_PHI_SHARED = [  # applied in this order, after the labelled-ID patterns above
+    (_EMAIL_RE, "[email removed]"),
+    (_MRN_RE, "MRN [removed]"),
+    (re.compile(DOB_PATTERN), "DOB [removed]"),
+    (PATIENT_ID_RE, "Pt. ID [removed]"),
+    (re.compile(PATIENT_NAME_PATTERN), "Pt. [name removed]"),
+    (re.compile(PATIENT_SURNAME_PATTERN), "Pt. [name removed]"),
+    (re.compile(SUBJECT_ID_PATTERN), "[id removed]"),
+    (re.compile(SSN_PATTERN), "[ssn removed]"),
+    # phones: the database redacts them everywhere; sheet mode only in Notes (below), where bare number
+    # runs elsewhere are product codes and tests/test_email.py pins that.
+]
 
 
 def _redact_phi(text: str, notes: bool = False) -> str:
-    """Remove patient identifiers: Pt ID, MRN, DOB, "Patient: Name", subject IDs, emails and (in Notes) phones.
+    """Remove patient identifiers: Pt ID, MRN, DOB, patient names, subject IDs, SSNs, emails, phones.
 
-    Hidden characters are dropped and look-alike forms folded (NFKC) before matching. Text with
-    nothing to remove comes back exactly as it was."""
-    folded = unicodedata.normalize("NFKC", _INVISIBLE.sub("", text))
+    Hidden characters are dropped and look-alike forms (full-width, Unicode dashes, Cyrillic and Greek
+    letters) folded before matching. Text with nothing to remove comes back exactly as it was."""
+    folded = unicodedata.normalize("NFKC", _INVISIBLE.sub("", text)).translate(_FOLD_TABLE)
     out = folded
     for pattern, replacement in _PHI_PATTERNS:
         out = pattern.sub(replacement, out)
     for pattern, replacement in _PHI_SHARED:
         out = pattern.sub(replacement, out)
     if notes:
-        for pattern in _PHONE_PATTERNS:
+        for pattern in (*_PHONE_PATTERNS, _US_PHONE_RE):
             out = pattern.sub("[phone removed]", out)
     return text if out == folded else out
 
@@ -627,7 +704,7 @@ ORG_REQ_HEADERS = [
 
 
 MAX_ITEMS = 100
-EMAIL_RE = re.compile(r"^[^@\s<>\"]+@[^@\s<>\"]+\.[^@\s<>\"]+$")
+EMAIL_RE = re.compile(r"^[^@\s<>\",;]+@[^@\s<>\",;]+\.[^@\s<>\",;]+$")  # no , or ; : the To header is comma-joined
 
 
 class OrgCartItemIn(BaseModel):
@@ -635,6 +712,11 @@ class OrgCartItemIn(BaseModel):
     category: str = Field(default="", max_length=200)
     quantity: int = Field(strict=True, ge=1, le=10000)  # the DB contract wants a JSON number
     sheet_row: Optional[int] = Field(default=None, ge=2, le=500000)
+
+    @field_validator("category")
+    @classmethod
+    def category_redacted(cls, v: str) -> str:
+        return _redact_phi(v.strip())  # stored, emailed to HQ and returned by /requests
 
     @field_validator("item_name")
     @classmethod
@@ -659,6 +741,11 @@ class OrgRequestBody(BaseModel):
         if not v:
             raise ValueError("cannot be empty")
         return v
+
+    @field_validator("org_name")
+    @classmethod
+    def org_name_redacted(cls, v: str) -> str:
+        return _redact_phi(v)  # the clinic name is stored, emailed and returned by /requests too
 
     @field_validator("org_email")
     @classmethod
@@ -725,6 +812,24 @@ def _request_id_for(client_request_id: Optional[str]) -> str:
         return _make_request_id()
     digest = hashlib.sha256(client_request_id.encode()).hexdigest()
     return f"REQ-{1_000_000_000 + int(digest[:9], 16) % 9_000_000_000}-{digest[9:15]}"  # same shape as _make_request_id
+
+
+def _same_request(rows: list[dict], body: "OrgRequestBody") -> bool:
+    """True if the stored lines of a request are exactly what this body asks for (same clinic, same items)."""
+    if not rows:
+        return False
+    first = rows[0]
+    if (first.get("Org Name", "").strip() != body.org_name.strip()
+            or first.get("Org Email", "").strip().lower() != body.org_email.strip().lower()):
+        return False
+    stored = sorted((r.get("Item Name", "").strip(), str(r.get("Quantity Requested", "")).strip()) for r in rows)
+    asked = sorted((i.item_name.strip(), str(i.quantity)) for i in body.items)
+    return stored == asked
+
+
+def _client_id_conflict() -> HTTPException:
+    # Deliberately says nothing about the other request (its id, clinic or items).
+    return HTTPException(status_code=409, detail="This request id was already used for a different request. Reload and submit again.")
 
 
 def _org_requests_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Worksheet:
@@ -844,8 +949,10 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
     client_ip = _client_ip(request)
     if db.enabled():
         request_id = _request_id_for(body.client_request_id)
-        if body.client_request_id and db.request_exists(request_id):  # a retry: already saved, no second email
-            return {"request_id": request_id, "status": "Under Review"}
+        if body.client_request_id and db.request_exists(request_id):  # already saved: a retry, or a clash
+            if not _same_request(db.request_lines(request_id), body):
+                raise _client_id_conflict()
+            return {"request_id": request_id, "status": "Under Review"}  # a true retry: no second email
         flags = _review_flags(body)
         request_id = db.create_request(body.org_name, body.org_email, [
             {"item_name": i.item_name, "category": i.category, "quantity": i.quantity,
@@ -861,7 +968,10 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
 
     if _use_sample_data():
         request_id = _request_id_for(body.client_request_id)
-        if body.client_request_id and any(r["Request ID"] == request_id for r in _sample_org_request_rows):
+        existing = [r for r in _sample_org_request_rows if r["Request ID"] == request_id]
+        if body.client_request_id and existing:
+            if not _same_request(existing, body):
+                raise _client_id_conflict()
             return {"request_id": request_id, "status": "Under Review", "message": "USE_SAMPLE_DATA mode."}
         ts = datetime.now(timezone.utc).isoformat()
         for item, flag in zip(body.items, flags):
@@ -890,8 +1000,14 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
 
     spreadsheet = _open_requests_spreadsheet()
     ws = _org_requests_worksheet(spreadsheet)
-    if body.client_request_id and request_id in ws.col_values(1):  # a retry: already saved
-        return {"request_id": request_id, "status": "Under Review"}
+    if body.client_request_id:
+        values = ws.get_all_values()
+        header = values[0] if values else []
+        existing = [_row_dict(header, r) for r in values[1:] if r and r[0] == request_id]
+        if existing:  # already saved: a retry, or a clash
+            if not _same_request(existing, body):
+                raise _client_id_conflict()
+            return {"request_id": request_id, "status": "Under Review"}
     ws.append_rows(batch, value_input_option="RAW")
 
     _queue_submit_emails(tasks, body, request_id, flagged, client_ip)
