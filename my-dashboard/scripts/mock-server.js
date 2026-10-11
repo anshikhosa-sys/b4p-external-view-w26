@@ -13,11 +13,11 @@ const DELAY = Number(process.env.API_DELAY || 0);
 
 const TYPES = {
   'Wound Care & Bandages': ['Gauze pads 4x4', 'Adhesive bandages', 'Elastic bandage 4 in', 'Triangular bandage', 'Wound dressing, sterile', 'Medical tape 1 in', 'Hydrocolloid dressing', 'Petrolatum gauze'],
-  Gloves: ['Nitrile gloves (M)', 'Nitrile gloves (L)', 'Surgical masks', 'N95 respirator', 'Isolation gown', 'Face shield', 'Shoe covers', 'Bouffant cap'],
+  Gloves: ['Nitrile gloves (M)', 'Nitrile gloves (L)', 'Surgical masks', 'N95 respirator', 'Isolation gown', 'Face shield', 'Shoe covers', 'Bouffant cap', 'Digital thermometer', 'Elastic bandage', 'Stethoscope', 'Syringe 3 mL'],
   'Needles & Syringes': ['Syringe 3 mL', 'Syringe 5 mL', 'Syringe 10 mL', 'Needle 21G', 'Needle 25G', 'Safety needle 23G', 'Alcohol prep pads', 'Sharps container'],
   'Vitals & Home Health': ['Digital thermometer', 'Pulse oximeter', 'Blood pressure cuff', 'Glucose test strips', 'Urine test strips', 'Otoscope speculum', 'Stethoscope', 'Malaria rapid test'],
   'Airway & Oxygen': ['Nebulizer mask', 'Oxygen tubing', 'Nasal cannula', 'Peak flow meter', 'Spacer device', 'Suction catheter'],
-  'Misc Surgical': ['Suture 3-0 nylon', 'Suture 4-0 vicryl', 'Scalpel blade #11', 'Scalpel blade #15', 'Surgical drape', 'Forceps, Adson', 'Needle driver', 'Hemostat'],
+  'Misc Surgical': ['Suture 3-0 nylon', 'Suture 4-0 vicryl', 'Scalpel blade #11', 'Scalpel blade #15', 'Surgical drape', 'Forceps, Adson', 'Needle driver', 'Hemostat', 'Nasal cannula', 'Stethoscope adult', 'Foley catheter 16Fr', 'Crutches, adult', 'Face shield', 'Respirator N95'],
   'IV Supplies': ['IV catheter 20G', 'IV catheter 22G', 'IV tubing set', 'Saline flush 10 mL', 'Tourniquet', 'IV start kit', 'Extension set'],
   'Apparel (Gowns, Shoe Covers, etc.)': ['Ankle brace', 'Knee brace', 'Wrist splint', 'Cervical collar', 'Crutches, adult', 'Cast padding'],
 };
@@ -55,8 +55,16 @@ http.createServer((req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
   if (p === '/api/supplies') return json(res, rows);
   if (p === '/inventory/availability') return json(res, avail);
-  if (p === '/requests' && req.method === 'GET') return json(res, []);
-  if (p === '/requests') return json(res, { ok: true, request_group_id: 'demo-0001', lines: 1 });
+  if (p === '/requests' && req.method === 'GET') {
+    const mk = (id, status, ts, items) => items.map(([n, q]) => ({ 'Request ID': id, Status: status, Timestamp: ts, 'Item Name': n, 'Quantity Requested': String(q) }));
+    return json(res, [
+      ...mk('R-1003', 'Pending', '2026-10-09T14:20:00Z', [['Syringe 5 mL', 40], ['Needle 21G', 100]]),
+      ...mk('R-1002', 'Approved', '2026-10-02T09:05:00Z', [['Nitrile gloves (M)', 200]]),
+      ...mk('R-1001', 'Delivered', '2026-09-20T16:40:00Z', [['Gauze pads 4x4', 60], ['Medical tape 1 in', 12], ['Elastic bandage 4 in', 10]]),
+      ...mk('R-1000', 'Denied', '2026-09-01T11:00:00Z', [['Pulse oximeter', 5]]),
+    ]);
+  }
+  if (p === '/requests') return json(res, { request_id: 'REQ-20261011-4F2A', status: 'Under Review' });
   return json(res, { detail: 'Not found' }, 404);
 }).listen(API, '127.0.0.1');
 

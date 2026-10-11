@@ -23,6 +23,9 @@ const SHOTS = [
   ['search-gloves', '#/', 1280, 900, false, 'type:glove'],
   ['request-slip', '#/c/needles-and-syringes', 1280, 900, false, 'cart'],
   ['checkout', '#/review', 1280, 900, false, 'cart'],
+  ['my-requests', '#/requests', 1280, 900, false, 'lookup'],
+  ['my-requests-mobile', '#/requests', 390, 844, false, 'lookup'],
+  ['request-sent', '#/c/needles-and-syringes', 1280, 900, false, 'submit'],
   ['checkout-mobile', '#/review', 390, 844, false, 'cart'],
   ['landing-mobile', '#/', 390, 844, false],
   ['category-mobile', '#/c/needles-and-syringes', 390, 844, false],
@@ -43,6 +46,23 @@ const SHOTS = [
       await ev(cdp, 'document.querySelector("input[type=search], header input").focus()');
       await cdp.send('Input.insertText', { text: act.slice(5) });
       await sleep(600);
+    }
+    if (act === 'lookup') {
+      await ev(cdp, '(() => { const e = document.querySelector("#lookup-email"); e.focus(); e.select(); })()');
+      await cdp.send('Input.insertText', { text: 'clinic@example.org' });
+      await ev(cdp, 'document.querySelector("#lookup-email").form.requestSubmit(); 0');
+      await sleep(800);
+    }
+    if (act === 'submit') {
+      await ev(cdp, '(document.querySelectorAll("button.btn")).forEach((b,i)=>{ if(/^Add/.test(b.textContent) && i<3) b.click(); }); location.hash="#/review"; 0');
+      await sleep(500);
+      for (const [sel, text] of [['#org-name', 'Example Clinic'], ['#org-email', 'clinic@example.org']]) {
+        await ev(cdp, `(() => { const e = document.querySelector(${JSON.stringify(sel)}); e.focus(); e.select(); })()`);
+        await cdp.send('Input.insertText', { text });
+      }
+      await ev(cdp, 'document.querySelector("form").requestSubmit(); 0');
+      await sleep(1000);
+      if (process.env.DEBUG) console.log('hash after submit', await ev(cdp, 'location.hash + " | " + (document.querySelector("main")||document.body).innerText.slice(0,120)'));
     }
     if (act === 'cart') {
       await ev(cdp, 'location.hash="#/c/needles-and-syringes"; 0');
