@@ -17,14 +17,27 @@ function capitalize(s) {
 }
 
 export function parseQuantity(value) {
-  const s = str(value).replace(/,/g, '');
-  if (!/^\d+(\.0*)?$/.test(s)) return null;
-  return Math.trunc(Number(s));
+  // Leading whole number, so "20 (pens)" is 20; "2.5", "1e3" and "0x10" are not counts.
+  const m = str(value).match(/^(\d[\d,]*)(?:\.0*)?(?=$|[\s(])/);
+  return m ? Math.trunc(Number(m[1].replace(/,/g, ''))) : null;
 }
 
-// Accepts YYYY-MM-DD (the sheet's format) and M/D/YYYY. Returns 'YYYY-MM-DD' or ''.
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+// Accepts YYYY-MM-DD (the sheet's format) and M/D/YYYY. Month-year ("01/2024",
+// "2024-01", "Jan 2024") and year-only ("2024") expire at the end of that period,
+// so a lot is not treated as fresh a month early. Returns 'YYYY-MM-DD' or ''.
 export function parseExpiry(value) {
   const s = str(value);
+  const endOfMonth = (y, mo) => (mo >= 1 && mo <= 12 ? toIso(y, mo, new Date(Date.UTC(y, mo, 0)).getUTCDate()) : '');
+  let my = s.match(/^(\d{1,2})\/(\d{4})$/);
+  if (my) return endOfMonth(+my[2], +my[1]);
+  my = s.match(/^(\d{4})-(\d{1,2})$/);
+  if (my) return endOfMonth(+my[1], +my[2]);
+  my = s.match(/^([A-Za-z]{3})[a-z]*\.?,?\s+(\d{4})$/);
+  if (my && MONTHS.includes(my[1].toLowerCase())) return endOfMonth(+my[2], MONTHS.indexOf(my[1].toLowerCase()) + 1);
+  my = s.match(/^(\d{4})$/);
+  if (my) return toIso(+my[1], 12, 31);
   let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (m) return toIso(+m[1], +m[2], +m[3]);
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
