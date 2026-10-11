@@ -42,6 +42,28 @@ def _post(c, items=None, org=None, email=None):
     })
 
 
+def test_retry_with_same_client_request_id_creates_one_request(client):
+    email, cid = _email(), uuid.uuid4().hex
+    items = [{"item_name": _name(client), "quantity": 1}]
+    body = {"org_name": "Retry Clinic", "org_email": email, "items": items, "client_request_id": cid}
+    first, second = client.post("/requests", json=body), client.post("/requests", json=body)
+    assert first.status_code == second.status_code == 200
+    assert first.json()["request_id"] == second.json()["request_id"]
+    assert REQ_ID.match(first.json()["request_id"])
+    rows = client.get("/requests", params={"email": email}).json()
+    assert len({r["Request ID"] for r in rows}) == 1 and len(rows) == 1
+    other = client.post("/requests", json={**body, "client_request_id": uuid.uuid4().hex})
+    assert other.json()["request_id"] != first.json()["request_id"]
+
+
+@pytest.mark.parametrize("cid", ["short", "has space in it", "x" * 81, "bad/chars-12345"])
+def test_client_request_id_shape_is_validated(client, cid):
+    r = client.post("/requests", json={"org_name": "O", "org_email": _email(),
+                                       "items": [{"item_name": _name(client), "quantity": 1}],
+                                       "client_request_id": cid})
+    assert r.status_code == 422
+
+
 # --- shapes --------------------------------------------------------------------
 
 def test_health_shape(client):

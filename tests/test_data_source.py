@@ -114,3 +114,37 @@ def test_migration_script_idempotent(db_client, tmp_path):
     assert [r["Item Name"] for r in rows] == ["A", "B"]
     assert rows[0]["Status"] == "Shipped" and rows[0]["Review Flag"] == "TRUE"
     assert rows[0]["Timestamp"].startswith("2026-04-15T17:01:05")
+
+
+def _holds(monkeypatch, inventory, approved):
+    import main
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(main, "get_inventory_records", lambda: inventory)
+    monkeypatch.setattr(main.db, "enabled", lambda: False)
+    monkeypatch.setattr(main, "_use_sample_data", lambda: True)
+    monkeypatch.setattr(main, "_sample_org_request_rows", [
+        {"Request ID": "REQ-1", "Status": "Approved", "Item Name": n, "Quantity Requested": str(q)} for n, q in approved])
+    main._inventory_cache.clear()
+    r = TestClient(main.app).get("/inventory/availability").json()
+    return {a["sheet_row"]: a["remaining"] for a in r}
+
+
+def _row(n, lot, qty):
+    return {"_sheet_row": n, "Name": "Gloves", "Category": "PPE", "Quantity": str(qty),
+            "Lot Number": lot, "Box Number": "1", "Pallet Number": "2"}
+
+
+def test_approved_hold_lands_on_the_lot_it_names(monkeypatch):
+    inv = [_row(2, "A", 10), _row(3, "B", 10)]
+    got = _holds(monkeypatch, inv, [("Gloves [Lot B, Box 1, Pallet 2]", 4)])
+    assert got == {2: 10, 3: 6}
+
+
+def test_approved_hold_without_lot_keeps_first_lot_first(monkeypatch):
+    inv = [_row(2, "A", 10), _row(3, "B", 10)]
+    assert _holds(monkeypatch, inv, [("Gloves", 4)]) == {2: 6, 3: 10}
+
+
+def test_named_lot_overflow_spills_to_other_rows_of_the_name(monkeypatch):
+    inv = [_row(2, "A", 10), _row(3, "B", 3)]
+    assert _holds(monkeypatch, inv, [("Gloves [Lot B, Box 1, Pallet 2]", 5)]) == {2: 8, 3: 0}

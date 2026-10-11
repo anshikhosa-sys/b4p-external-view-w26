@@ -43,11 +43,17 @@ def get_requests() -> list[dict]:
     return _query("SELECT * FROM dash_requests")
 
 
-def create_request(org_name: str, org_email: str, items: list[dict]) -> str:
-    """items: [{"item_name", "category", "quantity", "review_flag"}] -> 'REQ-<epoch>-<nnn>'."""
+def request_exists(request_id: str) -> bool:
+    return bool(_query("SELECT 1 FROM dash_requests WHERE \"Request ID\" = %s LIMIT 1", (request_id,)))
+
+
+def create_request(org_name: str, org_email: str, items: list[dict], request_id: str | None = None) -> str:
+    """items: [{"item_name", "category", "quantity", "review_flag"}] -> 'REQ-<epoch>-<nnn>'.
+
+    With request_id the database keeps that id and ignores a repeat (ON CONFLICT), so retries are safe."""
     with _connect() as conn:
         return conn.execute(
-            "SELECT create_request(%s, %s, %s)", (org_name, org_email, Jsonb(items))
+            "SELECT create_request(%s, %s, %s, %s)", (org_name, org_email, Jsonb(items), request_id)
         ).fetchone()["create_request"]
 
 

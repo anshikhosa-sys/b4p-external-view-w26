@@ -618,6 +618,8 @@ class OrgRequestBody(BaseModel):
     org_name: str = Field(min_length=1, max_length=200)
     org_email: str = Field(min_length=1, max_length=254)
     items: list[OrgCartItemIn] = Field(min_length=1, max_length=MAX_ITEMS)
+    # Made once per checkout in the browser and reused on retry, so a retry never makes a second request.
+    client_request_id: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9-]{8,80}$")
 
     @field_validator("org_name", "org_email")
     @classmethod
@@ -686,6 +688,14 @@ def _make_request_id() -> str:
     return f"REQ-{ts}-{suffix}"
 
 
+def _request_id_for(client_request_id: Optional[str]) -> str:
+    """The same client id always maps to the same request id; no client id gives a fresh random one."""
+    if not client_request_id:
+        return _make_request_id()
+    digest = hashlib.sha256(client_request_id.encode()).hexdigest()
+    return f"REQ-{1_000_000_000 + int(digest[:9], 16) % 9_000_000_000}-{digest[9:15]}"  # same shape as _make_request_id
+
+
 def _org_requests_worksheet(spreadsheet: gspread.Spreadsheet) -> gspread.Worksheet:
     title = os.environ.get("ORG_REQUESTS_WORKSHEET_TITLE", "Requests").strip()
     try:
@@ -716,6 +726,17 @@ def _base_item_name(name: str) -> str:
     The full name is stored and emailed; only matching against inventory uses the base name.
     """
     return LOT_SUFFIX_RE.sub("", name.strip(), count=1)
+
+
+LOT_PARTS_RE = re.compile(r"\[Lot (.*?), Box (.*?), Pallet (.*?)\]$")
+
+
+def _lot_parts(name: str) -> Optional[tuple[str, str, str]]:
+    """(lot, box, pallet) from the UI's trailing "[Lot X, Box Y, Pallet Z]"; None without one."""
+    m = LOT_PARTS_RE.search(name.strip())
+    if not m:
+        return None
+    return tuple("" if p.strip() in ("", "—", "-") else _norm_name(p) for p in m.groups())  # type: ignore[return-value]
 
 
 def _norm_name(name: str) -> str:
@@ -791,12 +812,15 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
                        _rl: None = Depends(rate_limit_post)):
     client_ip = _client_ip(request)
     if db.enabled():
+        request_id = _request_id_for(body.client_request_id)
+        if body.client_request_id and db.request_exists(request_id):  # a retry: already saved, no second email
+            return {"request_id": request_id, "status": "Under Review"}
         flags = _review_flags(body)
         request_id = db.create_request(body.org_name, body.org_email, [
             {"item_name": i.item_name, "category": i.category, "quantity": i.quantity,
              "review_flag": flag}
             for i, flag in zip(body.items, flags)
-        ])
+        ], request_id=request_id if body.client_request_id else None)
         _queue_submit_emails(tasks, body, request_id,
                              [i.item_name for i, flag in zip(body.items, flags) if flag], client_ip)
         return {"request_id": request_id, "status": "Under Review"}
@@ -805,7 +829,9 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
     flagged = [i.item_name for i, f in zip(body.items, flags) if f]
 
     if _use_sample_data():
-        request_id = _make_request_id()
+        request_id = _request_id_for(body.client_request_id)
+        if body.client_request_id and any(r["Request ID"] == request_id for r in _sample_org_request_rows):
+            return {"request_id": request_id, "status": "Under Review", "message": "USE_SAMPLE_DATA mode."}
         ts = datetime.now(timezone.utc).isoformat()
         for item, flag in zip(body.items, flags):
             _sample_org_request_rows.append({
@@ -817,7 +843,7 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
         _queue_submit_emails(tasks, body, request_id, flagged, client_ip)
         return {"request_id": request_id, "status": "Under Review", "message": "USE_SAMPLE_DATA mode."}
 
-    request_id = _make_request_id()
+    request_id = _request_id_for(body.client_request_id)
     ts = datetime.now(timezone.utc).isoformat()
 
     items_payload = [
@@ -833,6 +859,8 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
 
     spreadsheet = _open_requests_spreadsheet()
     ws = _org_requests_worksheet(spreadsheet)
+    if body.client_request_id and request_id in ws.col_values(1):  # a retry: already saved
+        return {"request_id": request_id, "status": "Under Review"}
     ws.append_rows(batch, value_input_option="RAW")
 
     _queue_submit_emails(tasks, body, request_id, flagged, client_ip)
@@ -976,14 +1004,20 @@ async def inventory_availability(request: Request):
     # unvetted, so they must not change what other clinics see. Shipped stock is assumed to have
     # been taken out of the inventory quantity by HQ. Requests are matched by normalized item name.
     approved_by_name: dict[str, int] = {}
+    approved_exact: dict[tuple, int] = {}  # (name, (lot, box, pallet)) -> qty, for lines naming their lot
     for r in org_requests:
         if r.get("Status", "").strip() == "Approved":
-            key = _norm_name(_base_item_name(r.get("Item Name", "")))
+            full = r.get("Item Name", "")
+            key = _norm_name(_base_item_name(full))
             try:
                 qty_asked = int(str(r.get("Quantity Requested", "0")).strip())
             except ValueError:
                 qty_asked = 1
-            approved_by_name[key] = approved_by_name.get(key, 0) + max(qty_asked, 0)
+            qty_asked = max(qty_asked, 0)
+            approved_by_name[key] = approved_by_name.get(key, 0) + qty_asked
+            parts = _lot_parts(full)
+            if parts:
+                approved_exact[(key, parts)] = approved_exact.get((key, parts), 0) + qty_asked
 
     def _qty(rec: dict) -> Optional[int]:
         try:
@@ -992,20 +1026,38 @@ async def inventory_availability(request: Request):
         except (ValueError, OverflowError):
             return None
 
-    # Spread each name's approved quantity over its inventory rows in order (first lot first),
-    # so a small lot reads 0 after a small approval and a big lot is not reduced by it.
+    # A request line that names its lot ("[Lot X, Box Y, Pallet Z]") holds that exact row, so it does
+    # not reduce another manufacturer's or lot's row of the same name. Whatever is left, and lines
+    # without a lot, are spread over the name's rows in order (first lot first), so a small lot reads 0
+    # after a small approval and a big lot is not reduced by it.
+    def _row_key(rec: dict):
+        name = _norm_name((rec.get("Name") or rec.get("name") or "").strip())
+        parts = tuple(_norm_name(str(rec.get(col) or "").strip()) for col in ("Lot Number", "Box Number", "Pallet Number"))
+        return name, parts
+
+    held_by_row: dict[int, int] = {}
     left_to_hold = dict(approved_by_name)
+    exact_left = dict(approved_exact)
+    for idx, rec in enumerate(inventory):
+        qty = _qty(rec)
+        rk = _row_key(rec)
+        if qty is None or not exact_left.get(rk):
+            continue
+        held_by_row[idx] = min(qty, exact_left[rk])
+        exact_left[rk] -= held_by_row[idx]
+        left_to_hold[rk[0]] -= held_by_row[idx]
     result = []
-    for rec in inventory:
+    for idx, rec in enumerate(inventory):
         item_name = (rec.get("Name") or rec.get("name") or "").strip()
         category = (rec.get("Category") or rec.get("category") or "").strip()
         sheet_row = rec.get("_sheet_row")
         qty = _qty(rec)
         key = _norm_name(item_name)
-        held = 0
-        if qty is not None and left_to_hold.get(key):
-            held = min(qty, left_to_hold[key])
-            left_to_hold[key] -= held
+        held = held_by_row.get(idx, 0)
+        if qty is not None and left_to_hold.get(key) and qty - held > 0:
+            extra = min(qty - held, left_to_hold[key])
+            held += extra
+            left_to_hold[key] -= extra
 
         if qty is None:  # blank or unparseable stock: unknown, not low
             remaining = None
