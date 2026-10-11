@@ -152,9 +152,11 @@ export function normalizeItem(raw, today = new Date()) {
     needsReview: str(raw['Review']).toLowerCase() === 'yes',
   };
   item.requestName = requestName(item, usableName);
-  item.searchText = [item.name, item.general, item.manufacturer, item.lot, item.notes, item.subcategory]
+  const text = [item.name, item.general, item.manufacturer, item.lot, item.notes, item.subcategory]
     .join(' ')
     .toLowerCase();
+  // Also searchable with number and unit joined: "10 mL" is found by "10ml".
+  item.searchText = `${text} ${text.replace(/(\d)\s+(?=[a-z])/g, '$1')}`;
   return item;
 }
 

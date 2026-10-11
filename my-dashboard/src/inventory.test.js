@@ -164,6 +164,15 @@ describe('normalizeItem', () => {
   });
 });
 
+describe('search with units', () => {
+  test('"10ml" finds "10 mL"', () => {
+    const item = normalizeItem({ _sheet_row: 3, Name: 'Syringe 10 mL', Subcategory: 'Needles & Syringes' }, TODAY);
+    expect(matchesSearch(item, 'syringe 10ml')).toBe(true);
+    expect(matchesSearch(item, 'syringe 10 ml')).toBe(true);
+    expect(matchesSearch(item, 'syringe 5ml')).toBe(false);
+  });
+});
+
 describe('normalizeInventory', () => {
   test('non-arrays and junk rows are ignored', () => {
     expect(normalizeInventory(null)).toEqual([]);
