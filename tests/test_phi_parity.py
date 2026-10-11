@@ -26,7 +26,24 @@ SAFE = [
     "Patient Return Electrode", "Patient-ready kit", "patient safety valve", "Pt ID label",
     "REF 302995", "Lot 6106151", "18G x 1.5 in", "Model DOB-100", "SmartSite™ needleless connector",
     "Medical record keeping supplies", "Patient Lift Sling", "Box 12 of 40",
+    "Patient Wound Dressing", "Patient Glove Box", "Patient Gown XL", "Patient Kit", "Patient Starter Kit",
+    "Patient Monitoring Cable", "PATIENT SLIPPERS", "single patient use only", "Patient preoperative skin preparation",
+    "It includes a patient ID and a code", "with a patient ID number.", "a space for Pt. ID.", "99 HOUR URINE FROZEN Pt. ID",
+    "PleurX Patient Starter Kit 1000 ml (Cat. 50-7500 Part 1 of 2)", "PT-CARE 3", "BD 10ml Syringe 21G x 1",
+    "ports labeled 'Tandem', 'Patient', and 'Vacuum'", "Lot 2024-05-01", "REF 305-555", "12 pt font",
 ]
+_TAILS = [
+    "Lift", "Slide Sheet", "Restraint", "Mattress", "Hygiene Wipes", "Call Cord", "Handling Belt", "Alarm", "Positioner",
+    "Warming Blanket", "Thermometer", "Specimen Bag", "Pack", "Shoe Covers", "Gown", "Monitor", "Cart", "Chair", "Scale",
+    "Scrubs", "Garments", "Bath Basin", "Bed", "Cushion", "Pillow", "Towel", "Wipes", "Tray", "Table", "Hoist", "Walker",
+    "Transfer Sling", "Lift Sling", "Comfort Kit", "Care Pack", "Isolation Gown", "Wash Cloth", "Urinal", "Bedpan",
+    "Hand Wash", "Skin Cleanser", "Hearing Aid", "Mask", "Drape", "Hair Cap", "Slippers", "Socks", "Bib",
+    "Education Folder", "Information Sheet", "Identification Band", "Transport Stretcher", "Warmer", "Cooling Pad",
+    "Oxygen Tubing", "Suction Canister", "Gait Belt", "Fall Mat", "Protection Pad", "Positioning Wedge", "Turn Assist",
+    "Valuables Bag", "Belongings Bag", "Pressure Cuff", "Simulator", "Lifter", "Gauze", "Needle", "Syringe", "Bandage",
+    "Tape", "Return Electrode", "Starter Kit", "Monitoring Cable", "Use Only",
+]
+SAFE += [f"{head} {tail}" for tail in _TAILS for head in ("Patient", "Pt", "Pt.", "patient", "pt.")]
 
 
 @pytest.mark.parametrize("text,secret", SENSITIVE)
