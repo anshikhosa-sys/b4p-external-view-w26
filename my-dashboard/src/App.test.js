@@ -315,7 +315,9 @@ describe('saved inventory copy', () => {
     at('#/c/needles-and-syringes');
     render(<App />);
     expect(screen.getByRole('button', { name: /^Synthetic 10ml Syringe$/ })).toBeInTheDocument(); // synchronous
-    expect(within(rowFor('Synthetic 10ml Syringe')).getByText('On hold')).toBeInTheDocument();
+    const held = within(rowFor('Synthetic 10ml Syringe'));
+    expect(held.getAllByText('On hold').length).toBeGreaterThan(0); // badge, and the blocked control
+    expect(held.queryByRole('button', { name: /^Add Synthetic 10ml Syringe to request$/ })).not.toBeInTheDocument();
     const refresh = calls.find((c) => c.path === '/api/supplies');
     expect(refresh.init.cache).toBe('no-cache');
     await act(async () => release(await response(200, SUPPLIES)));

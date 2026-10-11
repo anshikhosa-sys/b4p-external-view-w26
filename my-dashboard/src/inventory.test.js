@@ -728,7 +728,8 @@ describe('held lots', () => {
     const { items: merged, holds } = applyAvailability(items, all);
     const [p] = groupProducts(merged, holds);
     expect(p.onHold).toBe(true);
-    expect(p.quantity).toBe(15);
+    expect(p.quantity).toBe(0);
+    expect(canRequest(p)).toBe(false);
   });
 });
 

@@ -18,7 +18,7 @@ export default function RequestControl({ item, quantity, onChange, compact, shor
   if (!canRequest(item)) {
     return (
       <p className="request-control__blocked">
-        {item.expiryState === 'expired' ? 'Expired, can’t be requested' : 'Out of stock'}
+        {item.expiryState === 'expired' ? 'Expired, can’t be requested' : item.onHold ? 'On hold' : 'Out of stock'}
       </p>
     );
   }

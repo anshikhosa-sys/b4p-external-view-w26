@@ -231,7 +231,7 @@ export function holdsFrom(availability) {
 }
 
 export function canRequest(item) {
-  return item.expiryState !== 'expired' && item.quantity !== 0;
+  return item.expiryState !== 'expired' && item.quantity !== 0 && !item.onHold;
 }
 
 // Badges in display order. kind maps to a CSS modifier.
@@ -477,7 +477,7 @@ export function groupProducts(items, holds = {}) {
     // A lot already approved to someone else is not available: it does not count and is not allocated.
     const heldIds = lots.filter((l) => holds[l.id]).map((l) => l.id);
     const everyLotHeld = heldIds.length === lots.length;
-    const known = lots.filter((l) => l.quantity != null && (everyLotHeld || !holds[l.id]));
+    const known = lots.filter((l) => l.quantity != null && !holds[l.id]);
     const next = lots.filter((l) => l.expiry).reduce((a, b) => (!a || b.expiry < a.expiry ? b : a), null);
     // Show the shortest spelling of the merged maker ("BD").
     const makers = lots.map((l) => l.manufacturer).filter(Boolean);
@@ -488,7 +488,7 @@ export function groupProducts(items, holds = {}) {
       id: key,
       row: first.id,
       lots,
-      quantity: known.length ? known.reduce((n, l) => n + l.quantity, 0) : null,
+      quantity: known.length || everyLotHeld ? known.reduce((n, l) => n + l.quantity, 0) : null, // all held: 0 available
       expiry: next ? next.expiry : '',
       expiryState: next ? next.expiryState : null,
       allExpiring: lots.every((l) => l.expiryState),
