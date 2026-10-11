@@ -108,6 +108,22 @@ def test_request_lines_keep_the_item_id_in_postgres_mode(client):
     assert ids[:2] == ["", ""] and ids[2].isdigit()
 
 
+def test_item_id_is_dropped_when_the_sheet_row_has_shifted(client):
+    if client.get("/health").json()["source"] != "postgres":
+        pytest.skip("item ids exist only in the database")
+    supplies = [r for r in client.get("/api/supplies").json() if (r["Name"] or "").strip()]
+    a = supplies[0]
+    b = next(r for r in supplies if r["Name"].strip().casefold() != a["Name"].strip().casefold())
+    email = _email()
+    r = client.post("/requests", json={"org_name": "Shift Clinic", "org_email": email, "items": [
+        {"item_name": a["Name"] + " [Lot X, Box 1, Pallet 2]", "quantity": 1, "sheet_row": a["_sheet_row"]},  # still the same item
+        {"item_name": a["Name"].upper(), "quantity": 1, "sheet_row": a["_sheet_row"]},                      # same name, other case
+        {"item_name": a["Name"], "quantity": 1, "sheet_row": b["_sheet_row"]}]})                            # row now holds another item
+    assert r.status_code == 200
+    ids = sorted(row["Item ID"] for row in client.get("/requests", params={"email": email}).json())
+    assert ids[0] == "" and ids[1].isdigit() and ids[2].isdigit()
+
+
 @pytest.mark.parametrize("cid", ["short", "has space in it", "x" * 81, "bad/chars-12345"])
 def test_client_request_id_shape_is_validated(client, cid):
     r = client.post("/requests", json={"org_name": "O", "org_email": _email(),

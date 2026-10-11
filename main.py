@@ -843,6 +843,15 @@ def _request_id_for(client_request_id: Optional[str]) -> str:
     return f"REQ-{1_000_000_000 + int(digest[:9], 16) % 9_000_000_000}-{digest[9:15]}"  # same shape as _make_request_id
 
 
+def _item_id_for(line: "OrgCartItemIn", item_ids: dict) -> dict:
+    """{"item_id": ...} only if the sheet row still holds the item the clinic picked: rows shift when
+    someone inserts or deletes in the sheet between loading the catalog and submitting."""
+    found = item_ids.get(line.sheet_row) if line.sheet_row else None
+    if found and _norm_name(found[1]) == _norm_name(_base_item_name(line.item_name)):
+        return {"item_id": found[0]}
+    return {}
+
+
 def _same_request(rows: list[dict], body: "OrgRequestBody") -> bool:
     """True if the stored lines of a request are exactly what this body asks for (same clinic, same items)."""
     if not rows:
@@ -990,7 +999,7 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
         request_id = db.create_request(body.org_name, body.org_email, [
             {"item_name": i.item_name, "category": i.category, "quantity": i.quantity,
              "review_flag": flag,
-             **({"item_id": item_ids[i.sheet_row]} if i.sheet_row in item_ids else {})}
+             **_item_id_for(i, item_ids)}
             for i, flag in zip(body.items, flags)
         ], request_id=request_id if body.client_request_id else None)
         _queue_submit_emails(tasks, body, request_id,
