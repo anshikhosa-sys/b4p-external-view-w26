@@ -139,6 +139,28 @@ export function displayName(name) {
     .join(' ');
 }
 
+// Search text: lowercase, accents removed ("Café" is "cafe"), inch marks dropped.
+const plain = (t) => str(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/["″”“]/g, '');
+// ...and with sizes written one way: "4 x 4", "4×4" and 4" x 4" are all "4x4"; "0.9 %" is "0.9%";
+// "10 mL" is "10ml". Applied to both the supply text and the query, so either spelling finds either.
+const compact = (t) => t
+  .replace(/(\d)\s*[x×]\s*(?=\d)/g, '$1x')
+  .replace(/(\d)\s+%/g, '$1%')
+  .replace(/(\d)\s+(?=(?:ml|mg|mcg|kg|g|l|cc|mm|cm|m|in|oz|lb|fr|ga|iu|u)(?![a-z]))/g, '$1');
+// What a supply is searched against: the plain text and the compact text, side by side.
+export const searchForms = (t) => { const p = plain(t); return `${p} ${compact(p)}`; };
+
+// A query as [{t, alt}] terms. If the plain spelling finds nothing, `alt` (a trailing s/es
+// removed: "syringes" -> "syringe") is tried.
+export function searchTerms(query) {
+  return compact(plain(query)).split(/\s+/).filter(Boolean).map((t) => {
+    const stem = t.length > 3 ? t.replace(/(?:es|s)$/, '') : t;
+    return { t, alt: stem !== t && stem.length > 2 ? stem : null };
+  });
+}
+
+const hasTerm = (text, { t, alt }) => text.includes(t) || (alt !== null && text.includes(alt));
+
 export function normalizeItem(raw, today = new Date()) {
   const name = str(raw['Name']);
   const general = str(raw['General']);
@@ -165,11 +187,7 @@ export function normalizeItem(raw, today = new Date()) {
     needsReview: str(raw['Review']).toLowerCase() === 'yes',
   };
   item.requestName = requestName(item, usableName);
-  const text = [item.name, item.general, item.manufacturer, item.lot, item.notes, item.subcategory]
-    .join(' ')
-    .toLowerCase();
-  // Also searchable with number and unit joined: "10 mL" is found by "10ml".
-  item.searchText = `${text} ${text.replace(/(\d)\s+(?=[a-z])/g, '$1')}`;
+  item.searchText = searchForms([item.name, item.general, item.manufacturer, item.lot, item.notes, item.subcategory].join(' '));
   return item;
 }
 
@@ -235,18 +253,17 @@ export function stockLabel(quantity) {
 }
 
 export function matchesSearch(item, query) {
-  const terms = str(query).toLowerCase().split(/\s+/).filter(Boolean);
-  return terms.every((t) => item.searchText.includes(t));
+  return searchTerms(query).every((term) => hasTerm(item.searchText, term));
 }
 
 // Everything except the subcategory chip, so chip counts reflect the other filters.
 export function applyBaseFilters(items, { query = '', inStockOnly = false, hideExpiring = false, holds = {} } = {}) {
-  const terms = str(query).toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = searchTerms(query);
   return items.filter((item) => {
     if (item.unlabelled) return false;
     if (inStockOnly && (!item.quantity || item.onHold || holds[item.id])) return false;
     if (hideExpiring && (item.allExpiring ?? item.expiryState)) return false;
-    return terms.every((t) => item.searchText.includes(t));
+    return terms.every((term) => hasTerm(item.searchText, term));
   });
 }
 
@@ -411,13 +428,13 @@ export function unlabelledCount(items) {
 
 // Types whose own name matches every search term (at a word start).
 export function matchingTypes(catalog, query) {
-  const terms = str(query).toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = plain(query).split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
   const out = [];
   for (const cat of catalog) {
     for (const type of cat.types) {
       // Word starts only ("gau" finds Gauze), so a one-letter search doesn't light up every tile.
-      const words = type.label.toLowerCase().split(/[^a-z0-9]+/);
+      const words = plain(type.label).split(/[^a-z0-9]+/);
       if (terms.every((t) => words.some((w) => w.startsWith(t)))) out.push({ ...type, category: cat });
     }
   }
@@ -457,7 +474,10 @@ export function groupProducts(items, holds = {}) {
     const first = group.reduce((a, b) => (fefoRank(b) < fefoRank(a) || (fefoRank(b) === fefoRank(a) && b.id < a.id) ? b : a));
     // Lot breakdowns read A–Z by lot number, then by expiry.
     const lots = [...group].sort((a, b) => collate(a.lot, b.lot) || fefoRank(a).localeCompare(fefoRank(b)) || a.id - b.id);
-    const known = lots.filter((l) => l.quantity != null);
+    // A lot already approved to someone else is not available: it does not count and is not allocated.
+    const heldIds = lots.filter((l) => holds[l.id]).map((l) => l.id);
+    const everyLotHeld = heldIds.length === lots.length;
+    const known = lots.filter((l) => l.quantity != null && (everyLotHeld || !holds[l.id]));
     const next = lots.filter((l) => l.expiry).reduce((a, b) => (!a || b.expiry < a.expiry ? b : a), null);
     // Show the shortest spelling of the merged maker ("BD").
     const makers = lots.map((l) => l.manufacturer).filter(Boolean);
@@ -473,7 +493,8 @@ export function groupProducts(items, holds = {}) {
       expiryState: next ? next.expiryState : null,
       allExpiring: lots.every((l) => l.expiryState),
       needsReview: lots.some((l) => l.needsReview),
-      onHold: lots.every((l) => holds[l.id]),
+      onHold: everyLotHeld,
+      heldIds,
       searchText: [...new Set(lots.map((l) => l.searchText))].join(' '),
     };
   });
@@ -482,8 +503,9 @@ export function groupProducts(items, holds = {}) {
 // Split a requested quantity across a product's lots, earliest expiry first,
 // skipping expired lots. Returns [{item, quantity}] (one POST line per sheet row).
 export function allocateFefo(product, quantity) {
+  const held = new Set(product.heldIds || []);
   const usable = product.lots
-    .filter((l) => l.expiryState !== 'expired' && l.quantity !== 0)
+    .filter((l) => l.expiryState !== 'expired' && l.quantity !== 0 && (held.size === product.lots.length || !held.has(l.id)))
     .sort((a, b) => fefoRank(a).localeCompare(fefoRank(b)) || a.id - b.id);
   const out = [];
   let left = quantity;

@@ -707,3 +707,43 @@ describe('matchingTypes: word starts in the type label only', () => {
     expect(out.every((t) => t.category && t.category.name)).toBe(true);
   });
 });
+
+describe('held lots', () => {
+  const mk = (id, lot, qty, exp) => ({ _sheet_row: id, Name: 'Syringe 10 mL', 'Manufacturer Name': 'Acme', Subcategory: 'Needles & Syringes',
+    Quantity: String(qty), 'Lot Number': lot, 'Date of Expiration': exp });
+  const items = normalizeInventory([mk(2, 'A', 5, '2027-01-01'), mk(3, 'B', 10, '2028-01-01')], TODAY);
+  const avail = [{ sheet_row: 2, remaining: 0, availability_status: 'Requested' }, { sheet_row: 3, remaining: 10, availability_status: 'Available' }];
+
+  test('a fully held lot does not count toward the product and is not allocated', () => {
+    const { items: merged, holds } = applyAvailability(items, avail);
+    const [p] = groupProducts(merged, holds);
+    expect(p.quantity).toBe(10);
+    expect(p.onHold).toBe(false);
+    expect(allocateFefo(p, 15).map((a) => [a.item.lot, a.quantity])).toEqual([['B', 15]]); // overflow goes to the free lot, not lot A
+    expect(allocateFefo(p, 4).map((a) => [a.item.lot, a.quantity])).toEqual([['B', 4]]);
+  });
+
+  test('on hold only when every lot is held', () => {
+    const all = [{ ...avail[0] }, { sheet_row: 3, remaining: 0, availability_status: 'Requested' }];
+    const { items: merged, holds } = applyAvailability(items, all);
+    const [p] = groupProducts(merged, holds);
+    expect(p.onHold).toBe(true);
+    expect(p.quantity).toBe(15);
+  });
+});
+
+describe('search folding', () => {
+  const find = (name, query) => matchesSearch(normalizeItem({ _sheet_row: 9, Name: name }, TODAY), query);
+  test.each([
+    ['Café Wrap', 'cafe'], ['Cafe Wrap', 'café'], ['Cafe Wrap', 'CAFÉ'],
+    ['Syringe', 'syringes'], ['Gloves', 'glove'], ['Gauze boxes', 'box'], ['Syringes', 'syringe'],
+    ['Saline 0.9 %', '0.9%'], ['Saline 0.9%', '0.9 %'],
+    ['Gauze 4 x 4', '4x4'], ['Gauze 4x4', '4 x 4'], ['Gauze 4×4', '4x4'], ['Bandage 4" x 4"', '4x4'], ['Gauze 4x4', 'gauze 4 x 4'],
+    ['Syringe 10 mL', '10ml'], ['Syringe 10ml', '10 ml'],
+  ])('%p is found by %p', (name, query) => {
+    expect(find(name, query)).toBe(true);
+  });
+  test.each([['Gauze 4 x 4', '4x5'], ['Syringe', 'needles'], ['Gauze', 'gauzes x']])('%p is not found by %p', (name, query) => {
+    expect(find(name, query)).toBe(false);
+  });
+});

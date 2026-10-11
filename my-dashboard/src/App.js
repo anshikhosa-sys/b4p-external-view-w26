@@ -18,6 +18,7 @@ import { closeTo, navigate, useDebounced, useHashRoute, useMediaQuery } from './
 import {
   allocateFefo, applyAvailability, applyBaseFilters, buildCatalog, formatDateTime, groupByType, groupProducts,
   matchingTypes, normalizeInventory,
+  searchForms,
 } from './inventory';
 import { clearInventoryCache, readInventoryCache, writeInventoryCache } from './inventoryCache';
 import useCart, { MAX_LINES } from './useCart';
@@ -42,7 +43,7 @@ function enrich(rows) {
   return normalizeInventory(rows).map((item) => {
     const label = typeLabelFor(item);
     const type = typeof label === 'string' && label ? label : 'Unsorted supplies';
-    return { ...item, type, icon: iconFor(item), searchText: `${item.searchText} ${type.toLowerCase()}` };
+    return { ...item, type, icon: iconFor(item), searchText: `${item.searchText} ${searchForms(type)}` };
   });
 }
 
