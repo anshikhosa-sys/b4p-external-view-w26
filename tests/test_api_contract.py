@@ -124,6 +124,22 @@ def test_item_id_is_dropped_when_the_sheet_row_has_shifted(client):
     assert ids[0] == "" and ids[1].isdigit() and ids[2].isdigit()
 
 
+def test_item_id_accepts_the_name_with_its_own_maker_in_brackets(client):
+    if client.get("/health").json()["source"] != "postgres":
+        pytest.skip("item ids exist only in the database")
+    rows = client.get("/api/supplies").json()
+    row = next(r for r in rows if (r["Name"] or "").strip() and (r["Manufacturer Name"] or "").strip())
+    name, maker = row["Name"].strip(), row["Manufacturer Name"].strip()
+    email = _email()
+    r = client.post("/requests", json={"org_name": "Maker Clinic", "org_email": email, "items": [
+        {"item_name": f"{name} ({maker})", "quantity": 1, "sheet_row": row["_sheet_row"]},            # the row's own maker
+        {"item_name": f"{name} ({maker.upper()})", "quantity": 1, "sheet_row": row["_sheet_row"]},     # same maker, other case
+        {"item_name": f"{name} (Some Other Maker)", "quantity": 1, "sheet_row": row["_sheet_row"]}]})  # not this row's maker
+    assert r.status_code == 200
+    ids = sorted(x["Item ID"] for x in client.get("/requests", params={"email": email}).json())
+    assert ids[0] == "" and ids[1].isdigit() and ids[2].isdigit()
+
+
 @pytest.mark.parametrize("cid", ["short", "has space in it", "x" * 81, "bad/chars-12345"])
 def test_client_request_id_shape_is_validated(client, cid):
     r = client.post("/requests", json={"org_name": "O", "org_email": _email(),

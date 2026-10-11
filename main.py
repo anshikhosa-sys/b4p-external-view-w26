@@ -845,10 +845,18 @@ def _request_id_for(client_request_id: Optional[str]) -> str:
 
 def _item_id_for(line: "OrgCartItemIn", item_ids: dict) -> dict:
     """{"item_id": ...} only if the sheet row still holds the item the clinic picked: rows shift when
-    someone inserts or deletes in the sheet between loading the catalog and submitting."""
-    found = item_ids.get(line.sheet_row) if line.sheet_row else None
-    if found and _norm_name(found[1]) == _norm_name(_base_item_name(line.item_name)):
-        return {"item_id": found[0]}
+    someone inserts or deletes in the sheet between loading the catalog and submitting.
+
+    The line name must be the row's name (or general name) with the lot suffix stripped, or, for items
+    shown as "Name (Maker)", that name followed by the row's own manufacturer."""
+    row = item_ids.get(line.sheet_row) if line.sheet_row else None
+    if not row:
+        return {}
+    base = _norm_name(_base_item_name(line.item_name))
+    names = {_norm_name(n) for n in row["names"] if n}
+    maker = _norm_name(row["maker"]) if row["maker"] else ""
+    if base in names or (maker and any(base == f"{n} ({maker})" for n in names)):
+        return {"item_id": row["id"]}
     return {}
 
 

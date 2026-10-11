@@ -47,13 +47,16 @@ def request_exists(request_id: str) -> bool:
     return bool(_query("SELECT 1 FROM dash_requests WHERE \"Request ID\" = %s LIMIT 1", (request_id,)))
 
 
-def item_ids_for_rows(sheet_rows: list[int]) -> dict[int, tuple[str, str]]:
-    """sheet_row -> (dash_items.id, item name) for rows that exist. The id survives syncs; the name lets
-    the caller check the row is still the item the requester picked (sheet rows shift on insert/delete)."""
+def item_ids_for_rows(sheet_rows: list[int]) -> dict[int, dict]:
+    """sheet_row -> {"id", "names", "maker"} for rows that exist. The id survives syncs; the names (item
+    name and general name) and maker let the caller check the row is still the item the requester picked
+    (sheet rows shift on insert/delete)."""
     if not sheet_rows:
         return {}
-    rows = _query("SELECT sheet_row, id, name FROM dash_items WHERE sheet_row = ANY(%s)", (list(set(sheet_rows)),))
-    return {int(r["sheet_row"]): (r["id"], r["name"] or "") for r in rows}
+    rows = _query("SELECT sheet_row, id, name, gen_name, manufacturer FROM dash_items WHERE sheet_row = ANY(%s)",
+                  (list(set(sheet_rows)),))
+    return {int(r["sheet_row"]): {"id": r["id"], "names": [r["name"] or "", r["gen_name"] or ""],
+                                  "maker": r["manufacturer"] or ""} for r in rows}
 
 
 def request_lines(request_id: str) -> list[dict]:
