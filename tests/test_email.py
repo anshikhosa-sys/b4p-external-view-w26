@@ -405,8 +405,8 @@ def test_status_change_clears_this_instances_inventory_cache(sheet_client, no_em
     ("DOB 01/02/1900", "DOB [removed]"),
     ("D.O.B. 1900-01-02", "DOB [removed]"),
     ("date of birth: Jan 2, 1900", "DOB [removed]"),
-    ("Patient: Test Person", "Patient: [removed]"),
-    ("Pt name Test Person", "Patient: [removed]"),
+    ("Patient: Test Person", "Pt. [name removed]"),
+    ("Pt name Test Person", "Pt. [name removed]"),
     ("UR TEST FROZEN pt id " "0000000009 ST15 and DOB 1/2/1900", "UR TEST FROZEN Pt. ID [removed] ST15 and DOB [removed]"),
 ])
 def test_patient_identifiers_are_redacted(text, expected):

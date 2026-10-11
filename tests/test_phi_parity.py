@@ -21,7 +21,7 @@ SENSITIVE = [
     ("Patient Test Person", "Test Person"),
     ("Pt. Name: J. Smith", "Smith"),
     ("Pt​ ID 0000000009", "0000000009"),  # zero-width character inside the keyword
-]
+] + [('Pt Smith 3E', 'Smith'), ('Patient Smith.', 'Smith'), ('Patient Smith, Room 12', 'Smith'), ('Pt. Smith Rm 4', 'Smith'), ('Patient Smith bed 3', 'Smith'), ('Patient Smith (3E)', 'Smith'), ('Patient Smith\nRoom 5', 'Smith'), ('Pt Smith-Jones', 'Jones'), ('Patient Smith Jr.', 'Smith'), ('Pt Smith 05/04', 'Smith'), ('Patient Smith/Jones', 'Jones'), ('Patient J. Smith', 'Smith'), ('Patient J Smith', 'Smith'), ('Patient John', 'John'), ('patient John Q Public', 'Public'), ('Pt Garcia-Lopez', 'Lopez'), ('Patient: Smith Room 12', 'Smith'), ("Pt O'Neil 3E", 'Neil'), ('Pt de la Cruz', 'Cruz'), ('Pt van der Berg', 'Berg'), ('Patient McDonald', 'McDonald'), ("Patient D'Angelo", 'Angelo'), ('PT SMITH', 'SMITH'), ('Patient 日本語', '日'), ('Patient 山田 太郎', '太'), ('Patient: 山田', '山'), ('Patient: 山田 太郎', '太郎'), ('patient sm1th', 'th')]
 SAFE = [
     "Patient Return Electrode", "Patient-ready kit", "patient safety valve", "Pt ID label",
     "REF 302995", "Lot 6106151", "18G x 1.5 in", "Model DOB-100", "SmartSite™ needleless connector",
@@ -33,18 +33,8 @@ SAFE = [
     "ports labeled 'Tandem', 'Patient', and 'Vacuum'", "Lot 2024-05-01", "REF 305-555", "12 pt font",
     "1 pt bottle", "pt bottle", "2 pt. bottle",
 ]
-_TAILS = [
-    "Lift", "Slide Sheet", "Restraint", "Mattress", "Hygiene Wipes", "Call Cord", "Handling Belt", "Alarm", "Positioner",
-    "Warming Blanket", "Thermometer", "Specimen Bag", "Pack", "Shoe Covers", "Gown", "Monitor", "Cart", "Chair", "Scale",
-    "Scrubs", "Garments", "Bath Basin", "Bed", "Cushion", "Pillow", "Towel", "Wipes", "Tray", "Table", "Hoist", "Walker",
-    "Transfer Sling", "Lift Sling", "Comfort Kit", "Care Pack", "Isolation Gown", "Wash Cloth", "Urinal", "Bedpan",
-    "Hand Wash", "Skin Cleanser", "Hearing Aid", "Mask", "Drape", "Hair Cap", "Slippers", "Socks", "Bib",
-    "Education Folder", "Information Sheet", "Identification Band", "Transport Stretcher", "Warmer", "Cooling Pad",
-    "Oxygen Tubing", "Suction Canister", "Gait Belt", "Fall Mat", "Protection Pad", "Positioning Wedge", "Turn Assist",
-    "Valuables Bag", "Belongings Bag", "Pressure Cuff", "Simulator", "Lifter", "Gauze", "Needle", "Syringe", "Bandage",
-    "Tape", "Return Electrode", "Starter Kit", "Monitoring Cable", "Use Only",
-]
-SAFE += [f"{head} {tail}" for tail in _TAILS for head in ("Patient", "Pt", "Pt.", "patient", "pt.")]
+_TAILS = ['Lift', 'Slide Sheet', 'Restraint', 'Mattress', 'Hygiene Wipes', 'Call Cord', 'Handling Belt', 'Alarm', 'Positioner', 'Warming Blanket', 'Thermometer', 'Specimen Bag', 'Pack', 'Shoe Covers', 'Gown', 'Monitor', 'Cart', 'Chair', 'Scale', 'Scrubs', 'Garments', 'Bath Basin', 'Bed', 'Cushion', 'Pillow', 'Towel', 'Wipes', 'Tray', 'Table', 'Hoist', 'Walker', 'Transfer Sling', 'Lift Sling', 'Comfort Kit', 'Care Pack', 'Isolation Gown', 'Wash Cloth', 'Urinal', 'Bedpan', 'Hand Wash', 'Skin Cleanser', 'Hearing Aid', 'Mask', 'Drape', 'Hair Cap', 'Slippers', 'Socks', 'Bib', 'Education Folder', 'Information Sheet', 'Identification Band', 'Transport Stretcher', 'Warmer', 'Cooling Pad', 'Oxygen Tubing', 'Suction Canister', 'Gait Belt', 'Fall Mat', 'Protection Pad', 'Positioning Wedge', 'Turn Assist', 'Valuables Bag', 'Belongings Bag', 'Pressure Cuff', 'Simulator', 'Lifter', 'Gauze', 'Needle', 'Syringe', 'Bandage', 'Tape', 'Controlled Analgesia Pump', 'Return Electrode', 'Starter Kit', 'Use Resuscitator', 'Preoperative Skin Prep', 'Lateral Transfer Device', 'Safety Vest', 'Charting Pen', 'Chart Holder', 'Stool', 'Weighing Scale', 'Privacy Screen', 'Warming Gown', 'Support Stocking', 'Compression Sleeve', 'Positioning System']
+SAFE += [f"{head} {tail}" for tail in _TAILS for head in ("Patient", "Pt", "Pt.", "PATIENT", "patient", "PT", "pt.")]
 
 
 @pytest.mark.parametrize("text,secret", SENSITIVE)

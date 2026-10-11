@@ -313,8 +313,8 @@ _PHI_PATTERNS = [
     # (c) DOB / D.O.B. / date of birth followed by a date
     (re.compile(rf"\b(?:dob|d\.o\.b\.?|date\s+of\s+birth)[\s:\-]*{_DATE}", re.I), "DOB [removed]"),
     # (e) Patient: Name / Pt name Name
-    (re.compile(rf"\b(?:patient|pt)(?:\s+name)?\s*:\s*{_NAME}|\bpt\.?\s+name\s+{_NAME}", re.I),
-     "Patient: [removed]"),
+    # "Pt name Test Person" (no colon); the colon forms are handled by PATIENT_NAME_PATTERN below
+    (re.compile(rf"\bpt\.?\s+name\s+{_NAME}", re.I), "Patient: [removed]"),
 ]
 _PT_ID_RE = re.compile(rf"\b(?:pt|pat|patient)\.?\s*id(?![a-z])[\s:#.]*({_ID})", re.I)
 _PHONE_PATTERNS = [  # (d) only applied to Notes, and only phone-shaped text (bare digit runs are product codes)
@@ -326,7 +326,7 @@ _PHONE_PATTERNS = [  # (d) only applied to Notes, and only phone-shaped text (ba
 # Same spans as the database's redact_phi() (see b4p/normalize.py in Blueprints_DB, copied below;
 # tests/test_phi_parity.py runs one table of cases through both). Patterns use \b where Postgres uses \y.
 # --- copied from Blueprints_DB b4p/normalize.py (keep in step) ---
-_ID_TOKEN = r"(?:(?!ID\b)[A-Z]{1,3}\b(?![\'\u2019-])|[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)"
+_ID_TOKEN = r"(?:(?!ID\b)[A-Z]{1,3}\b(?![\'\u2019-]|\.?\s+[A-Z][a-z])|[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*)"
 PATIENT_ID_RE = re.compile(
     r"\b(?:[Pp][Tt]\b\.?|[Pp][Aa][Tt][Ii][Ee][Nn][Tt]\b)"
     r"(?:\s*(?:[Ii][Dd]\b|#|[Nn][Oo]\b\.?))?[\s:#,.]*"
@@ -340,7 +340,7 @@ SUBJECT_ID_RE = re.compile(SUBJECT_ID_PATTERN)
 
 # Letters of any common script (written out so it does not depend on the database locale)
 _L = r"A-Za-zÀ-ɏͰ-ϿЀ-ӿḀ-ỿ"
-_T = r"[" + _L + r"][" + _L + r"'’.-]*"        # one name token: José, O'Brien, J., Smith-Jones
+_T = r"[" + _L + r"][" + _L + r"'\u2019.-]*"        # one name token: José, O'Brien, J., Smith-Jones
 
 # Ordinary supply words that follow "Patient" in product names ("Patient Gait Belt").
 # They are never taken for a surname. Matching is case-insensitive; a plural -s/-es is allowed.
@@ -358,34 +358,47 @@ _STOP_WORDS = (
     "syringe|bandage|tape|hearing|hair|bib|temperature|probe|sensor|lead|system|pump|analgesia|catheter|"
     "bottle|container|cup|pitcher|tube|valve|filter|adapter|connector|clip|strap|harness|vest|garment|sleeve|"
     "stocking|boot|splint|brace|collar|rail|pole|stand|lamp|light|camera|phone|remote|control|button|switch|"
-    "screen|display|software|program|plan|form|sticker|stamp|marker|pen|pencil|paper|envelope|file|binder")
+    "screen|display|software|program|plan|form|sticker|stamp|marker|pen|pencil|paper|envelope|file|binder|"
+    "stool|charting|holder|privacy|weighing|compression|positioning|prep|device|lateral|resuscitator|vest|"
+    "skin|safety|satisfaction|survey|bill|rights|portal|identification|armband")
 _STOP = r"(?:" + _STOP_WORDS + r")(?:e?s)?"
 _NAMEWORD = r"[" + _L + r"][" + _L + r"'\u2019-]*"
 
-# A person's name after "Patient:" / "Pt. Name:" (any case): up to three words, or "Last, First".
-# After a plain dash ("Patient - Smith, John") a product word doesn't count as a name.
-# Mirrors b4p_patient_name_pattern() in sql/schema.sql.
-PATIENT_NAME_PATTERN = (r"(?i)(?<![0-9])(?<![0-9]\s)\b(?:pt\b\.?|patient\b)(?:\s+name)?\s*(?::\s*(?!id\b)NAME|-\s*(?!(?:" + _STOP + r"|id)\b)NAME)")
-PATIENT_NAME_PATTERN = PATIENT_NAME_PATTERN.replace("NAME",
-    _T + r"(?:\s*,\s*" + _T + r"(?:\s+" + _T + r")?|(?:\s+" + _T + r"){0,2})")
-PATIENT_NAME_RE = re.compile(PATIENT_NAME_PATTERN)
-
-# A name straight after Patient / Pt. with no colon ("Patient Johnson", "pt. smith"): one or two
-# words that are not ordinary supply words, followed by the end of the text, a comma, DOB/MRN/ID or
-# a number. ("Patient Gait Belt", "Patient Oxygen Tubing" and "patient use only" are products.)
-# Mirrors b4p_patient_surname_pattern() in sql/schema.sql.
 def _ci(pattern: str) -> str:
     """Make the letters of a simple word pattern case-insensitive without (?i), so a pattern can
     mix case-insensitive words with a case-sensitive keyword (Postgres has no (?i:...) groups)."""
     return re.sub(r"[A-Za-z]", lambda m: f"[{m.group().upper()}{m.group().lower()}]", pattern)
 
 
-# "pt" alone is a unit (12 pt font) or a pint: lower-case needs its period ("pt. smith"); never after a digit
-_PT_KEYWORD = r"(?:" + _ci("patient") + r"\b|(?:Pt|PT)\b\.?|pt\b\.)"
 _STOP_CI = _ci(_STOP)
-PATIENT_SURNAME_PATTERN = (r"(?<![0-9])(?<![0-9]\s)\b" + _PT_KEYWORD + r"\s+(?!" + _STOP_CI + r"\b)" + _NAMEWORD
-                           + r"(?:\s+[" + _L + r"]\.)?(?:\s+(?!" + _STOP_CI + r"\b)" + _NAMEWORD + r")?"
-                           + r"(?=\.?\s*$|\s*[,;]|\s+(?:" + _ci("dob") + "|" + _ci("mrn") + "|" + _ci("id") + r")\b|\s*[0-9])")
+
+# After an explicit label ("Patient:", "Pt. Name:", or a dash) whatever comes next IS the name:
+# the next one to three words, in any script. After a plain dash a product word doesn't count.
+# Mirrors b4p_patient_name_pattern() in sql/schema.sql.
+_ANYWORDS = r"\S+(?:\s+\S+){0,2}"
+PATIENT_NAME_PATTERN = (r"(?i)(?<![0-9])(?<![0-9]\s)\b(?:pt\b\.?|patient\b)(?:\s+name)?\s*"
+                        r"(?::\s*(?!id\b)" + _ANYWORDS + r"|-\s*(?!(?:" + _STOP + r"|id)\b)" + _ANYWORDS + r")")
+PATIENT_NAME_RE = re.compile(PATIENT_NAME_PATTERN)
+
+# A name straight after Patient / Pt. with no label ("Patient Smith bed 3", "Pt J. Smith",
+# "Pt van der Berg", "Patient 山田 太郎"): up to three capitalised words (initials and
+# particles allowed) whatever follows, unless the first word is an ordinary supply word
+# ("Patient Gait Belt"). A lower-case name ("pt. smith") only counts at the end of the text, before a
+# comma, DOB/MRN/ID or a number. Lower-case "pt" needs its period ("12 pt font" is a size); never after a digit.
+# Mirrors b4p_patient_surname_pattern() in sql/schema.sql.
+_PT_KEYWORD = r"(?:" + _ci("patient") + r"\b|(?:Pt|PT)\b\.?|pt\b\.)"
+_CJK = r"぀-ヿ㐀-鿿가-힯"
+_UPPER = r"A-ZÀ-ÞΑ-ΩА-Я" + _CJK
+_CAPWORD = r"[" + _UPPER + r"][" + _L + _CJK + r"'\u2019/.-]*"
+_PARTICLE = _ci("(?:de|la|del|della|van|der|den|von|da|di|le|du|ter|al|el|bin|ibn)")
+_NOSTOP = r"(?!" + _STOP_CI + r"\b)"
+_LOWWORD = r"[" + _L + r"'\u2019-]+(?![" + _L + r"0-9])"
+PATIENT_SURNAME_PATTERN = (
+    r"(?<![0-9])(?<![0-9]\s)\b" + _PT_KEYWORD + r"\s+(?:"
+    r"(?:" + _PARTICLE + r"\s+){0,2}" + _NOSTOP + _CAPWORD
+    + r"(?:\s+(?:" + _PARTICLE + r"\s+){0,2}" + _NOSTOP + _CAPWORD + r"){0,2}"
+    + r"|" + _NOSTOP + _LOWWORD + r"(?:\s+" + _NOSTOP + _LOWWORD + r")?"
+    + r"(?=\.?\s*$|\s*[,;]|\s+(?:" + _ci("dob") + "|" + _ci("mrn") + "|" + _ci("id") + r")\b|\s*[0-9]))")
 PATIENT_SURNAME_RE = re.compile(PATIENT_SURNAME_PATTERN)
 
 # Date of birth: numeric, "March 3 1980" or "3rd March 1980", after DOB / born (on)
