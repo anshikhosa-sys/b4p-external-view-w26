@@ -12,6 +12,16 @@ nothing talks to the backend yet. A small "Preview" note under every sign-in scr
 - Expired invite: `#/welcome/expired-invite`
 - Turned-off account: `closed@example.org` / `closed-account-1`
 
+## How to request supplies (`#/how-it-works`)
+
+A step-by-step guide for clinic staff who aren't comfortable with computers: what you need
+before starting, then 7 numbered steps (set up account, sign in, find a supply, choose how
+many, check, send, follow), what the status names and labels mean, and answers to common
+problems (forgot password, locked out, can't find a supply, adding a colleague). Small
+pictures drawn with the app's own styles show what each button looks like. It's linked from
+"How it works" in the header ("Help" on phones), a "First time here?" bar on the home page,
+and the sign-in page. It loads only when opened, so it doesn't slow the supply list.
+
 ## What it does
 
 - **Browsing stays open.** Sign-in is asked for at "Review your request" and "My requests".
@@ -49,6 +59,9 @@ top of `styles.css`. Public Sans loads from Google Fonts, so `npm run budget` re
 "External fonts: 3 found"; drop the three `<link>` lines in `public/index.html` to go back
 to the system font.
 
+The JS budget (all chunks) now reads 85.5 KB / 80 KB: about 4.5 KB is the guide, which is a
+separate chunk loaded only on `#/how-it-works`; the main bundle is about 81 KB.
+
 ## Screens
 
 | Sign in | Wrong password |
@@ -58,6 +71,10 @@ to the system font.
 | Invite setup | Checkout, signed in |
 |---|---|
 | ![](5-welcome.png) | ![](8-checkout-signed-in.png) |
+
+| Guide | Home page link |
+|---|---|
+| ![](guide-desktop.png) | ![](landing-guide-link.png) |
 
 | Phone: sign in | Phone: account menu |
 |---|---|

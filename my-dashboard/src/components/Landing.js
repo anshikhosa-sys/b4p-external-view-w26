@@ -37,6 +37,10 @@ function Landing({ catalog, total }) {
 
   return (
     <div className="landing">
+      <a className="landing__guide" href="#/how-it-works">
+        <strong>First time here?</strong> Read how to request supplies, step by step
+        <span aria-hidden="true"> →</span>
+      </a>
       <div className="landing__head">
         <div>
           <h1 className="page-title">Supplies for partner clinics</h1>

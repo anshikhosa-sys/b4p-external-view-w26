@@ -43,6 +43,9 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
         )}
         {!authPage && <SearchBar value={query} onChange={onQuery} total={total} />}
         <nav className="header__nav" aria-label="Main">
+          <a href="#/how-it-works" className="header__link header__link--help" aria-current={view === 'guide' ? 'page' : undefined}>
+            <span className="header__help-long">How it works</span><span className="header__help-short">Help</span>
+          </a>
           {account || !showSignIn ? (
             <a href="#/requests" className="header__link header__link--requests" aria-current={view === 'requests' ? 'page' : undefined}>
               My requests

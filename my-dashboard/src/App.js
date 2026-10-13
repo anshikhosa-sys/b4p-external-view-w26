@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, getAvailability, getSupplies, submitRequest } from './api';
 import { iconFor, ProductIconSprite, typeLabelFor } from './catalogIcons';
 import CategoryPage from './components/CategoryPage';
@@ -41,9 +41,11 @@ function newClientId() {
 
 const TITLES = {
   requests: 'My requests', checkout: 'Review your request', sent: 'Request submitted',
-  signin: 'Sign in', forgot: 'Reset your password', welcome: 'Set up your account',
+  signin: 'Sign in', forgot: 'Reset your password', welcome: 'Set up your account', guide: 'How to request supplies',
 };
 const AUTH_VIEWS = ['signin', 'forgot', 'welcome'];
+// The guide is long and read rarely, so it loads only when opened.
+const Guide = lazy(() => import('./components/Guide'));
 
 function enrich(rows) {
   return normalizeInventory(rows).map((item) => {
@@ -327,6 +329,12 @@ export default function App() {
         Signed in with {account.email}.
       </EmptyState>
     ) : <SignIn next={base.next} onSignedIn={onSignedIn(base.next)} contactEmail={CONTACT_EMAIL} />;
+  } else if (base.view === 'guide') {
+    main = (
+      <Suspense fallback={<p className="hint" role="status">Loading the guide…</p>}>
+        <Guide contactEmail={CONTACT_EMAIL} signedIn={!!account} />
+      </Suspense>
+    );
   } else if (base.view === 'forgot') {
     main = <ForgotPassword contactEmail={CONTACT_EMAIL} />;
   } else if (base.view === 'welcome') {
@@ -555,6 +563,7 @@ function routePath(r) {
   if (r.view === 'requests') return '/requests';
   if (r.view === 'signin') return `/signin${r.next ? `/${r.next}` : ''}`;
   if (r.view === 'forgot') return '/forgot';
+  if (r.view === 'guide') return '/how-it-works';
   if (r.view === 'welcome') return `/welcome/${r.token}`;
   if (r.view === 'checkout') return '/review';
   if (r.view === 'sent') return `/sent/${r.id}`;
