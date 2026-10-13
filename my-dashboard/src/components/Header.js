@@ -1,7 +1,30 @@
 import Icon from './Icons';
+import { useRef } from 'react';
 import SearchBar from './SearchBar';
 
-export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, query, onQuery, total, siteName }) {
+function AccountMenu({ account, onSignOut }) {
+  const ref = useRef(null);
+  return (
+    <details className="acct" ref={ref}>
+      <summary className="acct__btn">
+        <span className="acct__initial" aria-hidden="true">{account.org.trim().charAt(0).toUpperCase()}</span>
+        <span className="acct__org">{account.org}</span>
+        <span className="visually-hidden">, account menu</span>
+      </summary>
+      <div className="acct__menu">
+        <p className="acct__who">
+          Signed in as<br />
+          <strong>{account.name || account.org}</strong><br />
+          <span className="acct__email">{account.email}</span>
+        </p>
+        <a className="acct__item" href="#/requests" onClick={() => { ref.current.open = false; }}>My requests</a>
+        <button type="button" className="acct__item" onClick={() => { ref.current.open = false; onSignOut(); }}>Sign out</button>
+      </div>
+    </details>
+  );
+}
+
+export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, query, onQuery, total, siteName, account, onSignOut, authPage, showSignIn }) {
   return (
     <header className="header">
       <div className="header__inner">
@@ -20,10 +43,17 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
         )}
         <SearchBar value={query} onChange={onQuery} total={total} />
         <nav className="header__nav" aria-label="Main">
-          <a href="#/requests" className="header__link" aria-current={view === 'requests' ? 'page' : undefined}>
-            My requests
-          </a>
+          {account || !showSignIn ? (
+            <a href="#/requests" className="header__link header__link--requests" aria-current={view === 'requests' ? 'page' : undefined}>
+              My requests
+            </a>
+          ) : !authPage && (
+            <a href="#/signin" className="header__link" aria-current={view === 'signin' ? 'page' : undefined}>
+              Sign in
+            </a>
+          )}
         </nav>
+        {account && <AccountMenu account={account} onSignOut={onSignOut} />}
         <button type="button" className="header__slip" onClick={onOpenSlip}>
           <Icon name="slip" size={18} />
           <span className="header__slip-label">Request</span>

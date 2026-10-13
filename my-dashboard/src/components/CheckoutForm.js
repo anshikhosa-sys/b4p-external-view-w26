@@ -13,7 +13,7 @@ export function validateOrg({ name, email }) {
   return errors;
 }
 
-export default function CheckoutForm({ lines, totalUnits, org, onSubmit, onBack }) {
+export default function CheckoutForm({ lines, totalUnits, org, account, onSignOut, onSubmit, onBack }) {
   const [values, setValues] = useState({ name: org.name, email: org.email });
   const [touched, setTouched] = useState({});
   const [serverFields, setServerFields] = useState({});
@@ -66,6 +66,18 @@ export default function CheckoutForm({ lines, totalUnits, org, onSubmit, onBack 
       <div className="checkout__grid">
         <form className="checkout__form" onSubmit={handleSubmit} noValidate>
           <h2 className="section-title">Your clinic</h2>
+          {account ? (
+            <div className="sending-as">
+              <dl>
+                <div><dt>Clinic</dt><dd>{account.org}</dd></div>
+                <div><dt>Updates go to</dt><dd>{account.email}</dd></div>
+              </dl>
+              <p className="hint">
+                HQ emails this address when your request is approved and when it ships.{' '}
+                Not {account.org}? <button type="button" className="linklike sending-as__switch" onClick={onSignOut}>Sign out</button>
+              </p>
+            </div>
+          ) : (<>
           <p className="hint">We remember these on this device so you don’t have to type them again.</p>
           <div className={`field${shown.name ? ' field--error' : ''}`}>
             <label htmlFor="org-name">Clinic or organization name</label>
@@ -101,6 +113,7 @@ export default function CheckoutForm({ lines, totalUnits, org, onSubmit, onBack 
             <p className="field__hint" id="org-email-hint">We’ll email a confirmation here. Use the same email to look up your requests later.</p>
             {shown.email && <p className="field__error" id="org-email-error">{shown.email}</p>}
           </div>
+          </>)}
 
           {error && (
             <div className="form-error" role="alert">
