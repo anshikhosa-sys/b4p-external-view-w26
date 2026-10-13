@@ -7,8 +7,8 @@ const CONTACT = 'contact@b4pglobal.org';
 beforeEach(() => window.localStorage.clear());
 
 const fill = (email, password) => {
-  userEvent.clear(screen.getByLabelText('Work email'));
-  userEvent.type(screen.getByLabelText('Work email'), email);
+  userEvent.clear(screen.getByLabelText('Email'));
+  userEvent.type(screen.getByLabelText('Email'), email);
   userEvent.type(screen.getByLabelText('Password'), password);
   userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 };
@@ -18,7 +18,7 @@ test('checks the email before sending anything', () => {
   render(<SignIn onSignedIn={onSignedIn} contactEmail={CONTACT} />);
   fill('ana@clinic', 'whatever');
   expect(screen.getByText(/doesn’t look like an email address/)).toBeInTheDocument();
-  expect(screen.getByLabelText('Work email')).toHaveFocus();
+  expect(screen.getByLabelText('Email')).toHaveFocus();
   expect(onSignedIn).not.toHaveBeenCalled();
 });
 
@@ -49,7 +49,7 @@ test('invite setup shows the clinic and blocks weak or mismatched passwords', as
   render(<Welcome token={DEMO.invite} onSignedIn={onSignedIn} contactEmail={CONTACT} />);
   expect(await screen.findByText('Hillside Health Center', {}, { timeout: 2000 })).toBeInTheDocument();
   userEvent.type(screen.getByLabelText('New password'), 'password123');
-  userEvent.type(screen.getByLabelText('Type it again'), 'password12');
+  userEvent.type(screen.getByLabelText('Confirm password'), 'password12');
   userEvent.click(screen.getByRole('button', { name: 'Finish setup' }));
   expect(screen.getByText(/not a common password/)).toBeInTheDocument();
   expect(screen.getByText('The two passwords don’t match.')).toBeInTheDocument();

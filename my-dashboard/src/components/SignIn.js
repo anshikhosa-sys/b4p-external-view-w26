@@ -45,7 +45,7 @@ function PasswordField({ id, label, value, onChange, onBlur, error, autoComplete
 function EmailField({ value, onChange, onBlur, error, inputRef, hint }) {
   return (
     <div className={`field${error ? ' field--error' : ''}`}>
-      <label htmlFor="auth-email">Work email</label>
+      <label htmlFor="auth-email">Email</label>
       <input
         ref={inputRef}
         id="auth-email"
@@ -79,34 +79,11 @@ function Alert({ children, tone = 'error' }) {
 // Shown on every auth screen until the backend exists.
 function MockNotice({ onFill }) {
   return (
-    <div className="mock-note">
-      <strong>Preview.</strong> Sign-in isn’t connected to the server yet. Try{' '}
-      <code>{DEMO.email}</code> / <code>{DEMO.password}</code>
-      {onFill && <> <button type="button" className="linklike mock-note__fill" onClick={onFill}>Fill in</button></>}
-      , or the invite link <a href={`#/welcome/${DEMO.invite}`}>#/welcome/{DEMO.invite}</a>.
-    </div>
-  );
-}
-
-function HelpPanel({ contactEmail }) {
-  return (
-    <aside className="auth__help" aria-labelledby="help-title">
-      <h2 id="help-title" className="auth__help-title">How requesting works</h2>
-      <ol className="steps auth__steps">
-        <li><strong>Sign in</strong> with the email Blueprints invited.</li>
-        <li><strong>Add supplies</strong> and the amounts your clinic needs.</li>
-        <li><strong>Send the request.</strong> HQ reviews it and emails you at each step.</li>
-      </ol>
-      <div className="auth__help-block">
-        <h3>No account yet?</h3>
-        <p>Accounts are for Blueprints partner clinics. If your clinic should have access, email{' '}
-          <a href={`mailto:${contactEmail}`}>{contactEmail}</a> and we’ll send an invite.</p>
-      </div>
-      <div className="auth__help-block">
-        <h3>Using a shared computer?</h3>
-        <p>Choose <strong>Sign out</strong> at the top of the page when you’re done.</p>
-      </div>
-    </aside>
+    <p className="mock-note">
+      <strong>Preview:</strong> not connected to the server. Demo login <code>{DEMO.email}</code> / <code>{DEMO.password}</code>
+      {onFill && <> · <button type="button" className="linklike mock-note__fill" onClick={onFill}>Fill in</button></>}
+      {' '}· <a href={`#/welcome/${DEMO.invite}`}>Try an invite link</a>
+    </p>
   );
 }
 
@@ -115,15 +92,15 @@ function AuthFrame({ title, lede, children, contactEmail, onFill }) {
   useEffect(() => titleRef.current && titleRef.current.focus(), []);
   return (
     <div className="auth">
+      <section className="auth__card">
+        <h1 className="page-title" tabIndex={-1} ref={titleRef}>{title}</h1>
+        {lede && <p className="lede">{lede}</p>}
+        {children}
+      </section>
+      <p className="auth__foot">
+        Accounts are for Blueprints partner clinics. Need one? Email <a href={`mailto:${contactEmail}`}>{contactEmail}</a>.
+      </p>
       <MockNotice onFill={onFill} />
-      <div className="auth__grid">
-        <section className="auth__panel">
-          <h1 className="page-title" tabIndex={-1} ref={titleRef}>{title}</h1>
-          {lede && <p className="lede">{lede}</p>}
-          {children}
-        </section>
-        <HelpPanel contactEmail={contactEmail} />
-      </div>
     </div>
   );
 }
@@ -172,9 +149,10 @@ export function SignIn({ next, onSignedIn, contactEmail }) {
 
   return (
     <AuthFrame
-      title="Sign in to request supplies"
-      lede={next && NEXT_LABEL[next] ? `Sign in ${NEXT_LABEL[next]}. Your request is saved on this device.` : 'For Blueprints for Pangaea partner clinics.'}
+      title="Sign in"
+      lede={next && NEXT_LABEL[next] ? `Sign in ${NEXT_LABEL[next]}. Your request is saved.` : 'Blueprints for Pangaea partner clinics'}
       contactEmail={contactEmail}
+      foot
       onFill={() => setValues({ email: DEMO.email, password: DEMO.password })}
     >
       <form className="auth__form" onSubmit={onSubmit} noValidate>
@@ -222,7 +200,7 @@ export function SignIn({ next, onSignedIn, contactEmail }) {
         <button type="submit" className="btn btn--primary btn--block btn--lg" disabled={sending || locked}>
           {sending ? 'Signing in…' : 'Sign in'}
         </button>
-        <p className="auth__alt"><a href="#/forgot">Forgot your password?</a></p>
+        <p className="auth__alt"><a href="#/forgot">Forgot password?</a></p>
       </form>
     </AuthFrame>
   );
@@ -253,7 +231,7 @@ export function ForgotPassword({ contactEmail }) {
           <Alert tone="note">
             <p>If <strong>{sent}</strong> has an account, we’ve sent it a link to choose a new password. The link works for 1 hour.</p>
           </Alert>
-          <p className="hint">Nothing after a few minutes? Check your spam folder, or email <a href={`mailto:${contactEmail}`}>{contactEmail}</a>.</p>
+          <p className="auth__small">Nothing after a few minutes? Check spam, or email <a href={`mailto:${contactEmail}`}>{contactEmail}</a>.</p>
           <p className="auth__alt"><a href="#/signin">Back to sign in</a></p>
         </div>
       </AuthFrame>
@@ -261,7 +239,7 @@ export function ForgotPassword({ contactEmail }) {
   }
 
   return (
-    <AuthFrame title="Reset your password" lede="Enter your work email and we’ll send you a link to choose a new password." contactEmail={contactEmail}>
+    <AuthFrame title="Reset your password" lede="We’ll email you a link to choose a new one." contactEmail={contactEmail}>
       <form className="auth__form" onSubmit={onSubmit} noValidate>
         <EmailField inputRef={ref} value={email} onChange={(e) => setEmail(e.target.value)} onBlur={() => setTouched(true)} error={err} />
         <button type="submit" className="btn btn--primary btn--block btn--lg" disabled={sending}>
@@ -331,7 +309,7 @@ export function Welcome({ token, onSignedIn, contactEmail }) {
   return (
     <AuthFrame
       title={`Welcome${invite.name ? `, ${invite.name.split(' ')[0]}` : ''}`}
-      lede="Choose a password to finish setting up your clinic’s account. You’ll use it each time you request supplies."
+      lede="Choose a password to finish setting up your account."
       contactEmail={contactEmail}
     >
       <form className="auth__form" onSubmit={onSubmit} noValidate>
@@ -339,7 +317,7 @@ export function Welcome({ token, onSignedIn, contactEmail }) {
           <div><dt>Clinic</dt><dd>{invite.org}</dd></div>
           <div><dt>Email</dt><dd>{invite.email}</dd></div>
         </dl>
-        <p className="hint invite__wrong">Not your clinic? Don’t continue. Email <a href={`mailto:${contactEmail}`}>{contactEmail}</a>.</p>
+        <p className="invite__wrong">Not your clinic? Stop here and email <a href={`mailto:${contactEmail}`}>{contactEmail}</a>.</p>
         {/* Lets password managers save the right username. */}
         <input type="email" name="username" autoComplete="username" value={invite.email} readOnly hidden />
         <PasswordField
@@ -365,7 +343,7 @@ export function Welcome({ token, onSignedIn, contactEmail }) {
         </PasswordField>
         <PasswordField
           id="confirm-password"
-          label="Type it again"
+          label="Confirm password"
           inputRef={confirmRef}
           autoComplete="new-password"
           value={values.confirm}

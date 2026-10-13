@@ -1,7 +1,7 @@
 # Login mockup
 
 UI only. The screens run against a fake sign-in in `my-dashboard/src/auth/mockAuth.js`;
-nothing talks to the backend yet. A yellow "Preview" note on every sign-in screen says so.
+nothing talks to the backend yet. A small "Preview" note under every sign-in screen says so.
 
 ## Try it
 
@@ -40,7 +40,14 @@ nothing talks to the backend yet. A yellow "Preview" note on every sign-in scree
   The session should be an HttpOnly cookie, not localStorage.
 - The server has to repeat every check above; the browser checks are only for clear messages.
 - `REACT_APP_AUTH_PREVIEW=off` turns the sign-in step off (the existing App tests run that way).
-- The JS bundle is 80.2 KB, just over the 80 KB budget; most of that is mock code that goes away.
+
+## Look
+
+Restyled to match the Blueprints website revamp: Public Sans, warm paper background (#f6f4f0),
+navy headings (#000e3f), blue buttons (#0069f3), 3px corners, sand footer. Tokens are at the
+top of `styles.css`. Public Sans loads from Google Fonts, so `npm run budget` reports
+"External fonts: 3 found"; drop the three `<link>` lines in `public/index.html` to go back
+to the system font.
 
 ## Screens
 

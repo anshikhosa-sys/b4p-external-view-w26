@@ -1,17 +1,21 @@
 /* External Supply Request Dashboard: a fast, McMaster-style supply catalog.
-   White page, near-black ink, hairline rules; blue is only for links and actions. */
+   Styled to match the Blueprints website: warm paper background, navy headings,
+   Public Sans, square-ish corners; blue is only for links and actions. */
 
 :root {
-  --ink: #1f1f1f;
-  --ink-2: #5f5f5f;
-  --line: #e3e3e3;
-  --line-strong: #767676;
-  --bg: #ffffff;
-  --tint: #f6f7f9;
-  --blue: #0337a3;
-  --blue-hover: #4269ba;
-  --blue-50: #eef2fa;
-  --navy: #0b2f5b;
+  /* Tokens from the Blueprints website revamp (blueprints-website-revamp.vercel.app). */
+  --ink: #2b2c30;
+  --ink-2: #4c4e54;
+  --heading: #000e3f;
+  --line: rgba(0, 14, 63, 0.16);
+  --line-strong: rgba(0, 14, 63, 0.4);
+  --bg: #f6f4f0;
+  --tint: #ece8df;
+  --blue: #0035a2; /* links and outlines */
+  --blue-hover: #0069f3;
+  --blue-btn: #0069f3; /* filled buttons */
+  --blue-50: #e8efff;
+  --navy: #000e3f;
 
   --success: #3f7239;
   --success-tint: #e8f3e6;
@@ -22,8 +26,8 @@
   --warn-tint: #fff4d6;
   --hold-tint: #efefef;
 
-  /* System fonts: no font download. */
-  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Public Sans (loaded in index.html), system font until it arrives. */
+  --font: 'Public Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --w-body: 400;
   --w-text: 500; /* tables, labels */
   --w-strong: 600; /* headings, buttons, numbers */
@@ -34,7 +38,7 @@
   --text-lg: 20px;
   --text-2xl: 28px;
 
-  --radius: 6px;
+  --radius: 3px;
   --header-h: 64px;
   --gutter: 24px;
   --max-w: 1320px;
@@ -2365,20 +2369,56 @@ button:disabled {
   }
 }
 
-/* ── Sign in, reset, invite (mockup: docs/AUTH_PLAN.md) ──────────────── */
+/* ── Sign in, reset, invite (mockup: docs/login-mockup) ──────────────── */
+
+.auth {
+  max-width: 440px;
+  margin: 16px auto 0;
+}
+
+.auth__card {
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.auth .lede {
+  margin: 8px 0 24px;
+}
+
+.auth .field {
+  margin-bottom: 20px;
+}
+
+.auth__alt {
+  margin-top: 16px;
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.auth__alt a {
+  font-weight: 600;
+}
+
+.auth__foot {
+  margin-top: 16px;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  text-align: center;
+}
 
 .mock-note {
-  margin-bottom: 24px;
-  padding: 8px 12px;
-  border: 1px dashed var(--warn);
-  border-radius: var(--radius);
-  background: var(--warn-tint);
-  color: var(--ink);
-  font-size: var(--text-sm);
+  margin-top: 32px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line-strong);
+  color: var(--ink-2);
+  font-size: var(--text-xs);
+  text-align: center;
 }
 
 .mock-note code {
-  font-size: var(--text-xs);
+  color: var(--ink);
 }
 
 .mock-note__fill {
@@ -2386,34 +2426,10 @@ button:disabled {
   font-weight: 600;
 }
 
-.auth__grid {
-  display: grid;
-  gap: 40px;
-}
-
-@media (min-width: 900px) {
-  .auth__grid {
-    grid-template-columns: minmax(0, 440px) minmax(0, 360px);
-    gap: 72px;
-    padding-top: 16px;
+@media (max-width: 480px) {
+  .auth__card {
+    padding: 24px 16px;
   }
-}
-
-.auth .lede {
-  margin-bottom: 24px;
-}
-
-.auth__form {
-  margin-top: 8px;
-}
-
-.auth__alt {
-  margin-top: 16px;
-  font-size: var(--text-sm);
-}
-
-.auth__alt a {
-  font-weight: 600;
 }
 
 .pw {
@@ -2489,38 +2505,6 @@ button:disabled {
   text-decoration: underline;
 }
 
-.auth__help {
-  align-self: start;
-  padding: 24px;
-  border-top: 3px solid var(--navy);
-  background: var(--tint);
-}
-
-.auth__help-title {
-  font-size: var(--text-md);
-  font-weight: var(--w-strong);
-}
-
-.auth__steps {
-  margin: 16px 0 8px;
-}
-
-.auth__help-block {
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-  font-size: var(--text-sm);
-}
-
-.auth__help-block + .auth__help-block {
-  margin-top: 16px;
-}
-
-.auth__help-block h3 {
-  margin: 0 0 4px;
-  font-size: var(--text-sm);
-  font-weight: var(--w-strong);
-}
-
 .invite,
 .sending-as dl {
   display: grid;
@@ -2533,7 +2517,7 @@ button:disabled {
 .invite div,
 .sending-as dl div {
   display: grid;
-  grid-template-columns: 120px 1fr;
+  grid-template-columns: 72px 1fr;
   gap: 12px;
   padding: 12px 16px;
 }
@@ -2556,7 +2540,8 @@ button:disabled {
 }
 
 .invite__wrong {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+  color: var(--ink-2);
   font-size: var(--text-sm);
 }
 
@@ -2686,4 +2671,77 @@ button:disabled {
   .header__link--requests {
     display: none; /* in the account menu instead */
   }
+}
+
+.sending-as dl div {
+  grid-template-columns: 120px 1fr;
+}
+
+
+/* ── Blueprints website look ─────────────────────────────────────────── */
+
+.page-title,
+.state__title {
+  color: var(--heading);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.section-title,
+h2,
+h3 {
+  color: var(--heading);
+}
+
+.btn--primary {
+  background: var(--blue-btn);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--blue);
+}
+
+.btn--secondary {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: #fff;
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: #1b2560;
+}
+
+.header {
+  background: var(--bg);
+  border-bottom-color: var(--line);
+}
+
+.header__name {
+  color: var(--heading);
+  font-weight: 700;
+}
+
+.header__slip {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: #fff;
+}
+
+.header__slip:hover {
+  background: #1b2560;
+}
+
+.header__count {
+  background: #fff;
+  color: var(--navy);
+}
+
+.footer {
+  max-width: none;
+  margin-top: 48px;
+  padding-left: max(var(--gutter), calc((100% - var(--max-w)) / 2 + var(--gutter)));
+  padding-right: max(var(--gutter), calc((100% - var(--max-w)) / 2 + var(--gutter)));
+  border-top: 0;
+  background: var(--tint);
+  color: var(--ink-2);
 }

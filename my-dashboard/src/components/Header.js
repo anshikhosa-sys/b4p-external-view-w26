@@ -36,12 +36,12 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
             <span className="header__name-short">Supply Requests</span>
           </span>
         </a>
-        {onOpenCategories && (
+        {!authPage && onOpenCategories && (
           <button type="button" className="header__cats btn btn--quiet" onClick={onOpenCategories}>
             <Icon name="list" size={18} /> <span className="header__cats-label">Categories</span>
           </button>
         )}
-        <SearchBar value={query} onChange={onQuery} total={total} />
+        {!authPage && <SearchBar value={query} onChange={onQuery} total={total} />}
         <nav className="header__nav" aria-label="Main">
           {account || !showSignIn ? (
             <a href="#/requests" className="header__link header__link--requests" aria-current={view === 'requests' ? 'page' : undefined}>
@@ -54,11 +54,11 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
           )}
         </nav>
         {account && <AccountMenu account={account} onSignOut={onSignOut} />}
-        <button type="button" className="header__slip" onClick={onOpenSlip}>
+        {!authPage && <button type="button" className="header__slip" onClick={onOpenSlip}>
           <Icon name="slip" size={18} />
           <span className="header__slip-label">Request</span>
           <span className="header__count num" aria-label={`${lineCount} ${lineCount === 1 ? 'supply' : 'supplies'}`}>{lineCount}</span>
-        </button>
+        </button>}
       </div>
     </header>
   );
