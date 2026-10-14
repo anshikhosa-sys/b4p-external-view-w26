@@ -15,9 +15,9 @@ const SEED = {
   'closed@example.org': { org: 'Example Clinic', name: 'Closed Account', password: 'closed-account-1', disabled: true },
 };
 
+// An invite link has no time limit: it works until someone finishes setting up that account.
 const INVITES = {
-  'demo-invite': { email: 'nurse@hillside.org', org: 'Hillside Health Center', name: 'Joseph Okafor', expires: Date.now() + 6 * 86400000 },
-  'expired-invite': { email: 'late@clinic.org', org: 'Lakeview Clinic', name: '', expires: Date.now() - 86400000 },
+  'demo-invite': { email: 'nurse@hillside.org', org: 'Hillside Health Center', name: 'Joseph Okafor' },
 };
 
 const ACCOUNTS_KEY = 'b4p.mock.accounts.v1';
@@ -70,7 +70,6 @@ export async function lookupInvite(token) {
   await wait(300);
   const invite = INVITES[token];
   if (!invite) throw new AuthError('invalid', { code: 'invalid' });
-  if (invite.expires < Date.now()) throw new AuthError('expired', { code: 'expired', email: invite.email });
   if (accounts()[invite.email]) throw new AuthError('used', { code: 'used', email: invite.email });
   return { email: invite.email, org: invite.org, name: invite.name };
 }
@@ -81,6 +80,13 @@ export async function acceptInvite(token, { password }) {
   const saved = readJSON(ACCOUNTS_KEY, {});
   writeJSON(ACCOUNTS_KEY, { ...saved, [invite.email]: { org: invite.org, name: invite.name, password } });
   return publicAccount(invite.email, invite);
+}
+
+// Preview only: forget the account made from the demo invite, so its setup page can be shown again.
+export function resetDemoInvite() {
+  const saved = readJSON(ACCOUNTS_KEY, {});
+  delete saved[INVITES[DEMO.invite].email];
+  writeJSON(ACCOUNTS_KEY, saved);
 }
 
 // Always "sent", so the page doesn't reveal which emails have accounts.

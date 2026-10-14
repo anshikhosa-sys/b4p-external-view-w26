@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { acceptInvite, AuthError, DEMO, LOCK_MINUTES, lookupInvite, requestReset, signIn } from '../auth/mockAuth';
+import { acceptInvite, AuthError, DEMO, LOCK_MINUTES, lookupInvite, requestReset, resetDemoInvite, signIn } from '../auth/mockAuth';
 import { cleanEmail, emailError, MAX_EMAIL, MAX_PASSWORD, passwordChecks, validateNewPassword, validateSignIn } from '../auth/validate';
 import Icon from './Icons';
 
@@ -264,6 +264,7 @@ export function Welcome({ token, onSignedIn, contactEmail }) {
   const pwRef = useRef(null);
   const confirmRef = useRef(null);
 
+  const [retry, setRetry] = useState(0); // the demo reset asks again
   useEffect(() => {
     let live = true;
     lookupInvite(token)
@@ -272,14 +273,13 @@ export function Welcome({ token, onSignedIn, contactEmail }) {
     return () => {
       live = false;
     };
-  }, [token]);
+  }, [token, retry]);
 
   if (invite.status === 'loading') {
     return <div className="auth"><p className="hint" role="status">Checking your invite link…</p></div>;
   }
   if (invite.status === 'bad') {
     const copy = {
-      expired: ['This invite link has expired', 'Invite links work for 7 days. Email us and we’ll send a new one.'],
       used: ['This invite was already used', 'Your account is set up. Sign in with your email and password.'],
       invalid: ['This link doesn’t work', 'It may have been copied incompletely. Open the link straight from the email, or email us for a new one.'],
     }[invite.code] || [];
@@ -290,6 +290,22 @@ export function Welcome({ token, onSignedIn, contactEmail }) {
             ? <a className="btn btn--primary btn--lg" href="#/signin">Go to sign in</a>
             : <a className="btn btn--secondary btn--lg" href={`mailto:${contactEmail}?subject=New%20invite%20link`}>Email us for a new link</a>}
         </div>
+        {invite.code === 'used' && token === DEMO.invite && (
+          <p className="mock-note">
+            <strong>Preview:</strong> this browser already set up the demo account.{' '}
+            <button
+              type="button"
+              className="linklike mock-note__fill"
+              onClick={() => {
+                resetDemoInvite();
+                setInvite({ status: 'loading' });
+                setRetry((n) => n + 1);
+              }}
+            >
+              Reset this demo invite
+            </button>
+          </p>
+        )}
       </AuthFrame>
     );
   }

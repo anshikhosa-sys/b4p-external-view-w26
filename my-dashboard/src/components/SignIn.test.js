@@ -56,8 +56,17 @@ test('invite setup shows the clinic and blocks weak or mismatched passwords', as
   expect(onSignedIn).not.toHaveBeenCalled();
 });
 
-test('an expired invite says how to get a new one', async () => {
-  render(<Welcome token="expired-invite" onSignedIn={jest.fn()} contactEmail={CONTACT} />);
-  expect(await screen.findByText('This invite link has expired', {}, { timeout: 2000 })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Email us for a new link' })).toBeInTheDocument();
+test('an invite works until the account is set up, then says it was used', async () => {
+  window.localStorage.clear();
+  const { unmount } = render(<Welcome token="demo-invite" onSignedIn={jest.fn()} contactEmail={CONTACT} />);
+  expect(await screen.findByRole('heading', { name: /^Welcome/ }, { timeout: 2000 })).toBeInTheDocument();
+  unmount();
+
+  window.localStorage.setItem('b4p.mock.accounts.v1', JSON.stringify({ 'nurse@hillside.org': { org: 'Hillside Health Center', name: 'Joseph', password: 'x' } }));
+  render(<Welcome token="demo-invite" onSignedIn={jest.fn()} contactEmail={CONTACT} />);
+  expect(await screen.findByText('This invite was already used', {}, { timeout: 2000 })).toBeInTheDocument();
+
+  userEvent.click(screen.getByRole('button', { name: 'Reset this demo invite' }));
+  expect(await screen.findByRole('heading', { name: /^Welcome/ }, { timeout: 2000 })).toBeInTheDocument();
+  window.localStorage.clear();
 });

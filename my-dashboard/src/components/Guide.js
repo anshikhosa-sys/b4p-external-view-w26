@@ -133,7 +133,7 @@ export default function Guide({ contactEmail, signedIn }) {
               <strong>Picking a password:</strong> a short sentence is easy to remember and hard to guess,
               like <em>river bend clinic supplies</em>. Write it somewhere safe at your clinic.
             </p>
-            <p>The invite link works for 7 days. If it has expired, the page will tell you, and you can ask us for a new one.</p>
+            <p>The invite link keeps working until you finish setting up your account, so there’s no rush. After that, sign in with your email and password instead.</p>
           </Step>
 
           <Step id="signin" n="2" title="Sign in">
