@@ -5,15 +5,10 @@ const FIRST = 6;
 
 const kinds = (n) => `${n} ${n === 1 ? 'kind' : 'kinds'} of supplies`;
 
-// The home page: a link to the guide for first-timers, then one large tile per
-// category (A–Z). The tile's heading is a link to the whole category.
+// The home page: one large tile per category (A–Z). The tile's heading is a link to the whole category.
 function Landing({ catalog }) {
   return (
     <div className="landing">
-      <a className="landing__guide" href="#/how-it-works">
-        <strong>First time here?</strong> Read how to request supplies, step by step
-        <span aria-hidden="true"> →</span>
-      </a>
       <h1 className="page-title">Supplies for partner clinics</h1>
       <p className="lede">Donated medical supplies, free for partner clinics.</p>
 

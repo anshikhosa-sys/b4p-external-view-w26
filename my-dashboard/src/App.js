@@ -456,6 +456,13 @@ export default function App() {
           {inventory.status === 'done' && !inventory.fresh && !inventory.error && slow && (
             <p className="stale" role="status">Showing the list saved on this device while the server wakes up.</p>
           )}
+          {/* Home page only: the guide link comes first, above everything else. */}
+          {inventory.status === 'done' && base.view === 'catalog' && !searchView && (
+            <a className="landing__guide" href="#/how-it-works">
+              <strong>First time here?</strong> Read how to request supplies, step by step
+              <span aria-hidden="true"> →</span>
+            </a>
+          )}
           {/* One step bar on screen: the list drawer shows its own (step 2). */}
           {inventory.status === 'done' && route.view !== 'slip' && <Progress step={1} />}
           {inventory.status === 'done' && <SearchBar value={rawQuery} onChange={onQuery} />}
