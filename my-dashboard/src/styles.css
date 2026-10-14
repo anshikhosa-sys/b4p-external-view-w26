@@ -3166,3 +3166,84 @@ h3 {
     gap: 4px;
   }
 }
+
+
+/* ── Clearer for first-time users ─────────────────────────────────────── */
+
+/* "Add" is an outline button, so the one filled blue button on screen is the next step. */
+.btn--add.btn--secondary {
+  border-color: var(--blue);
+  background: #fff;
+  color: var(--blue);
+}
+
+.btn--add.btn--secondary:hover:not(:disabled) {
+  background: var(--blue-50);
+}
+
+/* Labels in muted brand tints instead of bright red and yellow. */
+.badge--low {
+  background: var(--warn-tint);
+  color: #6b4500;
+}
+
+.badge--soon {
+  background: var(--danger-tint);
+  color: var(--danger-text);
+}
+
+.badge--info {
+  background: var(--blue-50);
+  color: var(--navy);
+}
+
+.badge--hold {
+  background: var(--tint);
+  color: var(--ink-2);
+}
+
+.badge {
+  font-size: 13px;
+}
+
+.auth > .back {
+  margin-bottom: 12px;
+}
+
+.guide__short {
+  margin-top: 24px;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.guide__short-title {
+  margin-bottom: 8px;
+  color: var(--heading);
+  font-weight: 800;
+}
+
+.guide__short ol {
+  display: grid;
+  gap: 6px;
+  padding-left: 22px;
+  list-style: decimal;
+}
+
+.guide__short ol + p {
+  margin-top: 12px;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+/* On phones the account button says "Account", not just an initial. */
+.acct__label {
+  display: none;
+}
+
+@media (max-width: 1179px) {
+  .acct__label {
+    display: inline;
+  }
+}

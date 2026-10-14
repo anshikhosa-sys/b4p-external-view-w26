@@ -10,7 +10,7 @@ function StatusTrack({ status }) {
   if (info.stopped) {
     return (
       <p className="req__stopped">
-        <Icon name="alert" size={20} /> <strong>{info.label}.</strong> Contact Blueprints HQ if you have questions about this request.
+        <Icon name="alert" size={20} /> <strong>{info.label}.</strong> Email the Blueprints team if you have questions about this request.
       </p>
     );
   }

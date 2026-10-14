@@ -216,7 +216,7 @@ describe('availability', () => {
     expect(labels({ Quantity: '0' })).toEqual([]);
     expect(labels({ Quantity: '1' }, true)).toEqual(['On hold']);
     expect(labels({ 'Date of Expiration': '2026-12-01' })).toEqual(['Expires soon']);
-    expect(labels({ Review: 'Yes' })).toEqual(['Needs HQ check']);
+    expect(labels({ Review: 'Yes' })).toEqual(['Team check']);
     // expired items never reach the UI now, so there is no "Expired" badge
     expect(labels({ 'Date of Expiration': '2020-01-01' })).not.toContain('Expired');
     const kinds = badgesFor(normalizeItem(row({ Quantity: '1', 'Date of Expiration': '2026-12-01' }), TODAY), false).map((b) => b.kind);

@@ -59,5 +59,5 @@ test('invite setup shows the clinic and blocks weak or mismatched passwords', as
 test('an expired invite says how to get a new one', async () => {
   render(<Welcome token="expired-invite" onSignedIn={jest.fn()} contactEmail={CONTACT} />);
   expect(await screen.findByText('This invite link has expired', {}, { timeout: 2000 })).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Email HQ for a new link' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Email us for a new link' })).toBeInTheDocument();
 });

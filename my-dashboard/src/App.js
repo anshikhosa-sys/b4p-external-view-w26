@@ -28,7 +28,7 @@ import useOrg from './useOrg';
 import './styles.css';
 
 const DEFAULT_FILTERS = { inStockOnly: false, hideExpiring: false };
-const SITE_NAME = 'External Supply Request Dashboard';
+const SITE_NAME = 'Blueprints Supply Requests';
 const CONTACT_EMAIL = /^[^@\s<>"]+@[^@\s<>"]+\.[^@\s<>"]+$/.test(process.env.REACT_APP_CONTACT_EMAIL || '')
   ? process.env.REACT_APP_CONTACT_EMAIL
   : 'contact@b4pglobal.org';
@@ -104,7 +104,7 @@ function useInventory() {
       .catch((err) => {
         const message = err instanceof ApiError
           ? err.message
-          : 'The supply list has data this page can’t read. Try again later, or let Blueprints HQ know.';
+          : 'The supply list has data this page can’t read. Try again later, or email the Blueprints team.';
         setInventory((s) => (s.items.length ? { ...s, error: message } : { ...s, status: 'error', error: message }));
       })
       .finally(() => setRefreshing(false));
@@ -245,7 +245,7 @@ export default function App() {
   const onQuantity = useCallback((item, n) => {
     if (n <= 0) offerUndo(item.id);
     if (!setQuantity(item, n)) {
-      setToast({ message: `Your request is full. It can include up to ${MAX_LINES} different supplies.` });
+      setToast({ message: `Your list is full. It can include up to ${MAX_LINES} different supplies.` });
     }
   }, [setQuantity, offerUndo]);
 
@@ -315,7 +315,7 @@ export default function App() {
   };
   const onSignOut = () => {
     signOut();
-    setToast({ message: 'You’ve signed out. Your request is still saved on this device.' });
+    setToast({ message: 'You’ve signed out. Your list is still saved on this device.' });
     if (base.view === 'requests' || base.view === 'checkout') navigate('/');
   };
 
@@ -342,7 +342,7 @@ export default function App() {
   } else if (authOn && base.view === 'requests' && !account) {
     main = <SignIn next="requests" onSignedIn={onSignedIn()} contactEmail={CONTACT_EMAIL} />;
   } else if (authOn && base.view === 'checkout' && !account && cart.lines.length) {
-    main = <SignIn next="review" onSignedIn={onSignedIn()} contactEmail={CONTACT_EMAIL} />;
+    main = <SignIn next="review" lineCount={cart.lines.length} onSignedIn={onSignedIn()} contactEmail={CONTACT_EMAIL} />;
   } else if (base.view === 'requests') {
     main = (
       <MyRequests
@@ -359,7 +359,7 @@ export default function App() {
     ) : (
       <EmptyState
         level={1}
-        title="Your request is empty"
+        title="Your list is empty"
         action={<button type="button" className="btn btn--primary" onClick={() => navigate('/')}>Browse supplies</button>}
       >
         Add supplies from the list, then come back here to submit your request.
@@ -419,7 +419,7 @@ export default function App() {
     } else if (catalogTotal === 0) {
       page = (
         <EmptyState title="No supplies are listed right now">
-          Blueprints HQ updates the list as donations arrive. Check back soon.
+          The Blueprints team updates the list as donations arrive. Check back soon.
         </EmptyState>
       );
     } else {

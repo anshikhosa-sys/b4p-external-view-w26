@@ -31,7 +31,7 @@ export default function RequestControl({ item, quantity, onChange, compact, shor
         onClick={() => onChange(1)}
         aria-label={`Add ${item.name} to request`}
       >
-        {short ? 'Add' : 'Add to request'}
+        {short ? 'Add' : 'Add to list'}
       </button>
     );
   }

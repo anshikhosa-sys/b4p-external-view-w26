@@ -9,6 +9,7 @@ function AccountMenu({ account, onSignOut }) {
       <summary className="acct__btn">
         <span className="acct__initial" aria-hidden="true">{account.org.trim().charAt(0).toUpperCase()}</span>
         <span className="acct__org">{account.org}</span>
+        <span className="acct__label">Account</span>
         <span className="visually-hidden">, account menu</span>
       </summary>
       <div className="acct__menu">
@@ -59,7 +60,7 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
         {account && <AccountMenu account={account} onSignOut={onSignOut} />}
         {!authPage && <button type="button" className="header__slip" onClick={onOpenSlip}>
           <Icon name="slip" size={18} />
-          <span className="header__slip-label">Request</span>
+          <span className="header__slip-label">Your list</span>
           <span className="header__count num" aria-label={`${lineCount} ${lineCount === 1 ? 'supply' : 'supplies'}`}>{lineCount}</span>
         </button>}
       </div>

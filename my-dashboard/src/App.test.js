@@ -82,7 +82,7 @@ function go(hash) {
 const at = (hash) => window.history.replaceState(null, '', `/${hash}`);
 const rowFor = (name) => screen.getByRole('button', { name: new RegExp(`^${name}$`) }).closest('tr');
 const addButton = (name) => screen.getByRole('button', { name: new RegExp(`^Add ${name} to request$`, 'i') });
-const headerRequest = () => within(screen.getByRole('banner')).getByRole('button', { name: /request/i });
+const headerRequest = () => within(screen.getByRole('banner')).getByRole('button', { name: /your list/i });
 
 // Waits for a row button by name, or (default) for the page's h1.
 async function renderAt(hash, waitFor = 'h1') {
@@ -249,8 +249,8 @@ describe('request drawer', () => {
     await renderAt('#/c/needles-and-syringes', /^Synthetic 10ml Syringe$/);
     userEvent.click(addButton('Synthetic 10ml Syringe'));
     userEvent.click(headerRequest());
-    const drawer = await screen.findByRole('dialog', { name: 'Your request' });
-    expect(within(drawer).getByRole('button', { name: 'Close your request' })).toHaveFocus();
+    const drawer = await screen.findByRole('dialog', { name: 'Your list' });
+    expect(within(drawer).getByRole('button', { name: 'Close your list' })).toHaveFocus();
     userEvent.click(within(drawer).getByRole('button', { name: 'One more Synthetic 10ml Syringe' }));
     expect(within(drawer).getByLabelText('Quantity of Synthetic 10ml Syringe')).toHaveValue('2');
     userEvent.keyboard('{esc}');
@@ -261,9 +261,9 @@ describe('request drawer', () => {
   test('empty drawer explains how to add and has no Review button', async () => {
     await renderAt('#/');
     userEvent.click(headerRequest());
-    const drawer = await screen.findByRole('dialog', { name: 'Your request' });
+    const drawer = await screen.findByRole('dialog', { name: 'Your list' });
     expect(within(drawer).getByText(/Nothing here yet/)).toBeInTheDocument();
-    expect(within(drawer).queryByRole('button', { name: 'Review request' })).not.toBeInTheDocument();
+    expect(within(drawer).queryByRole('button', { name: 'Review and send' })).not.toBeInTheDocument();
   });
 
   test('Remove offers Undo, which restores the line in place', async () => {
@@ -272,7 +272,7 @@ describe('request drawer', () => {
     go('#/c/gloves');
     userEvent.click(await screen.findByRole('button', { name: /^Add Nitrile gloves to request$/ }));
     userEvent.click(headerRequest());
-    const drawer = await screen.findByRole('dialog', { name: 'Your request' });
+    const drawer = await screen.findByRole('dialog', { name: 'Your list' });
     userEvent.click(within(drawer).getByRole('button', { name: 'Remove Synthetic 10ml Syringe' }));
     expect(await screen.findByText('Removed Synthetic 10ml Syringe from your request.')).toBeInTheDocument();
     userEvent.click(screen.getByRole('button', { name: /Undo/ }));
@@ -297,7 +297,7 @@ describe('request drawer', () => {
     render(<App />);
     fireEvent.change(await screen.findByLabelText('Search supplies'), { target: { value: 'item 102' } });
     userEvent.click(await screen.findByRole('button', { name: /^Add Bulk item 102 to request$/ }));
-    expect(await screen.findByText(/Your request is full\. It can include up to 100/)).toBeInTheDocument();
+    expect(await screen.findByText(/Your list is full\. It can include up to 100/)).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem(CART_KEY))).toHaveLength(100);
   }, 20000);
 
@@ -368,7 +368,7 @@ async function toReview() {
   go('#/c/other-supplies');
   userEvent.click(await screen.findByRole('button', { name: /^Add Gauze roll to request$/ }));
   userEvent.click(headerRequest());
-  userEvent.click(within(await screen.findByRole('dialog', { name: 'Your request' })).getByRole('button', { name: 'Review request' }));
+  userEvent.click(within(await screen.findByRole('dialog', { name: 'Your list' })).getByRole('button', { name: 'Review and send' }));
   await screen.findByRole('heading', { name: 'Review your request' });
 }
 
@@ -381,7 +381,7 @@ describe('review and confirmation', () => {
   test('validation blocks sending and focuses the first problem', async () => {
     await toReview();
     expect(window.location.hash).toBe('#/review');
-    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    userEvent.click(screen.getByRole('button', { name: 'Send request' }));
     expect(screen.getByText('Enter your clinic or organization name.')).toBeInTheDocument();
     expect(screen.getByLabelText('Clinic or organization name')).toHaveFocus();
     expect(posts).toHaveLength(0);
@@ -390,7 +390,7 @@ describe('review and confirmation', () => {
   test('submit -> confirmation -> My requests with status', async () => {
     await toReview();
     fill('  Riverside Clinic ', 'Staff@Riverside.org');
-    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    userEvent.click(screen.getByRole('button', { name: 'Send request' }));
     expect(await screen.findByRole('heading', { name: 'Request submitted' })).toHaveFocus();
     expect(screen.getByText(RID)).toBeInTheDocument();
     expect(window.location.hash).toBe(`#/sent/${RID}`);
@@ -423,7 +423,7 @@ describe('review and confirmation', () => {
     window.localStorage.setItem(CART_KEY, value);
     act(() => { window.dispatchEvent(new StorageEvent('storage', { key: CART_KEY, newValue: value })); });
     fill();
-    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    userEvent.click(screen.getByRole('button', { name: 'Send request' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Ghost product is no longer available. Remove it from your request, then submit again.');
     expect(posts).toHaveLength(0);
     expect(JSON.parse(window.localStorage.getItem(CART_KEY))).toHaveLength(3);
@@ -433,10 +433,10 @@ describe('review and confirmation', () => {
     await toReview();
     fill();
     handlers.submit = () => Promise.reject(new TypeError('Failed to fetch'));
-    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    userEvent.click(screen.getByRole('button', { name: 'Send request' }));
     await screen.findByRole('alert');
     handlers.submit = () => response(200, { request_id: RID, status: 'Under Review' });
-    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    userEvent.click(screen.getByRole('button', { name: 'Send request' }));
     await screen.findByRole('heading', { name: 'Request submitted' });
     expect(posts).toHaveLength(2);
     expect(posts[0].client_request_id).toMatch(/^[A-Za-z0-9-]{8,80}$/);
@@ -450,7 +450,7 @@ describe('review and confirmation', () => {
     go('#/review');
     await screen.findByRole('heading', { name: 'Review your request' });
     fill();
-    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    userEvent.click(screen.getByRole('button', { name: 'Send request' }));
     await screen.findByRole('heading', { name: 'Request submitted' });
     expect(posts[0].items[0].category).toHaveLength(200);
   });
@@ -471,7 +471,7 @@ describe('review and confirmation', () => {
     go('#/review');
     await screen.findByRole('heading', { name: 'Review your request' });
     fill();
-    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    userEvent.click(screen.getByRole('button', { name: 'Send request' }));
     await screen.findByRole('heading', { name: 'Request submitted' });
     expect(posts[0].items.map((i) => [i.sheet_row, i.quantity])).toEqual([[31, 2], [30, 2]]);
     // FE-13: HQ must be able to tell the two lines apart
@@ -483,7 +483,7 @@ describe('review and confirmation', () => {
     handlers.submit = () => new Promise((r) => { release = r; });
     await toReview();
     fill();
-    const send = screen.getByRole('button', { name: 'Submit request' });
+    const send = screen.getByRole('button', { name: 'Send request' });
     fireEvent.submit(send.closest('form'));
     fireEvent.submit(send.closest('form'));
     expect(posts).toHaveLength(1);
@@ -499,14 +499,14 @@ describe('review and confirmation', () => {
     handlers.submit = () => response(status, body);
     await toReview();
     fill();
-    userEvent.click(screen.getByRole('button', { name: 'Submit request' }));
+    userEvent.click(screen.getByRole('button', { name: 'Send request' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
     expect(JSON.parse(window.localStorage.getItem(CART_KEY))).toHaveLength(2);
   });
 
   test('empty review page offers to browse', async () => {
     await renderAt('#/review', null);
-    expect(await screen.findByText('Your request is empty')).toBeInTheDocument();
+    expect(await screen.findByText('Your list is empty')).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 
@@ -549,7 +549,7 @@ describe('loading and errors', () => {
     userEvent.click(screen.getByRole('button', { name: /^Nitrile gloves$/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Nitrile gloves' });
     expect(window.location.hash).toBe('#/item/5');
-    expect(within(dialog).getByText(/HQ checks this supply by hand/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Our team checks this supply by hand/)).toBeInTheDocument();
     expect(dialog.querySelector('img')).toBeNull();
     userEvent.keyboard('{esc}');
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -574,7 +574,7 @@ describe('phone width', () => {
     userEvent.click(addButton('Synthetic 10ml Syringe'));
     expect(document.querySelector('.slipbar')).toBeNull();
     userEvent.click(headerRequest());
-    expect(await screen.findByRole('dialog', { name: 'Your request' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Your list' })).toBeInTheDocument();
   });
 });
 
@@ -652,7 +652,7 @@ describe('ordering, expiry and wording', () => {
     const link = within(screen.getByRole('contentinfo')).getByRole('link', { name: /contact@b4pglobal\.org/ });
     expect(link).toHaveAttribute('href', 'mailto:contact@b4pglobal.org');
     expect(screen.queryByText(/unlabelled/)).not.toBeInTheDocument();
-    expect(document.title).toMatch(/External Supply Request Dashboard/);
+    expect(document.title).toMatch(/Blueprints Supply Requests/);
   });
 });
 
@@ -688,10 +688,10 @@ describe('round 3: progressive rows, titles', () => {
 
   test('page titles carry the site name', async () => {
     await renderAt('#/c/gloves', /^Nitrile gloves$/);
-    expect(document.title).toBe('Gloves | External Supply Request Dashboard');
+    expect(document.title).toBe('Gloves | Blueprints Supply Requests');
     go('#/requests');
     await screen.findByRole('heading', { level: 1, name: 'My requests' });
-    expect(document.title).toBe('My requests | External Supply Request Dashboard');
+    expect(document.title).toBe('My requests | Blueprints Supply Requests');
   });
 
   test('matching-type tiles in search name their category', async () => {

@@ -244,7 +244,7 @@ export function badgesFor(item, onHold) {
     out.push({ kind: 'low', label: 'Low stock' });
   }
   if (item.expiryState === 'soon') out.push({ kind: 'soon', label: 'Expires soon' });
-  if (item.needsReview) out.push({ kind: 'info', label: 'Needs HQ check' });
+  if (item.needsReview) out.push({ kind: 'info', label: 'Team check' });
   return out;
 }
 

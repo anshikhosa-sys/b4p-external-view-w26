@@ -41,10 +41,10 @@ export default function ItemDetail({ item, onHold, quantity, onQuantity, onClose
           <p className="detail__stock num">{stockLabel(item.quantity)}</p>
           <Badges badges={badgesFor(item, onHold)} />
           {onHold && (
-            <p className="detail__note">Other clinics have already asked for all of this. You can still request it; HQ will let you know what they can send.</p>
+            <p className="detail__note">Other clinics have already asked for all of this. You can still request it; our team will let you know what we can send.</p>
           )}
           {item.needsReview && (
-            <p className="detail__note">HQ checks this supply by hand before it ships, so approval may take a little longer.</p>
+            <p className="detail__note">Our team checks this supply by hand before it ships, so approval may take a little longer.</p>
           )}
           <div className="detail__action">
             <RequestControl item={item} quantity={quantity} onChange={onQuantity} />
@@ -56,7 +56,7 @@ export default function ItemDetail({ item, onHold, quantity, onQuantity, onClose
             <div><dt>Warehouse category</dt><dd>{item.category || 'Not listed'}</dd></div>
           </dl>
           <h3 className="detail__h3">
-            {item.lots.length > 1 ? `${item.lots.length} lots, earliest expiry first` : 'Lot'}
+            {item.lots.length > 1 ? `${item.lots.length} batches, soonest to expire first` : 'Batch'}
           </h3>
           <table className="lots lots--detail">
             <thead>

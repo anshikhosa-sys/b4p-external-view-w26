@@ -8,7 +8,7 @@ export function validateOrg({ name, email }) {
   const errors = {};
   if (!name.trim()) errors.name = 'Enter your clinic or organization name.';
   else if (name.trim().length > 200) errors.name = 'Keep the name under 200 characters.';
-  if (!email.trim()) errors.email = 'Enter an email address so HQ can reach you.';
+  if (!email.trim()) errors.email = 'Enter an email address so our team can reach you.';
   else if (!EMAIL_RE.test(email.trim()) || email.trim().length > 254) errors.email = 'Enter a valid email address, like name@clinic.org.';
   return errors;
 }
@@ -73,7 +73,7 @@ export default function CheckoutForm({ lines, totalUnits, org, account, onSignOu
                 <div><dt>Updates go to</dt><dd>{account.email}</dd></div>
               </dl>
               <p className="hint">
-                HQ emails this address when your request is approved and when it ships.{' '}
+                We email this address when your request is approved and when it ships.{' '}
                 Not {account.org}? <button type="button" className="linklike sending-as__switch" onClick={onSignOut}>Sign out</button>
               </p>
             </div>
@@ -124,7 +124,7 @@ export default function CheckoutForm({ lines, totalUnits, org, account, onSignOu
           {sending && slow && <WakingNotice />}
 
           <button type="submit" className="btn btn--primary btn--block btn--lg" disabled={sending} aria-disabled={sending}>
-            {sending ? 'Submitting request…' : 'Submit request'}
+            {sending ? 'Sending request…' : 'Send request'}
           </button>
         </form>
 
@@ -138,7 +138,7 @@ export default function CheckoutForm({ lines, totalUnits, org, account, onSignOu
               <li key={l.id}>
                 <span className="summary__name">
                   {l.name}
-                  {l.lotCount > 1 && <span className="summary__lots">From {l.lotCount} lots, earliest expiry first</span>}
+                  {l.lotCount > 1 && <span className="summary__lots">From {l.lotCount} batches, soonest to expire first</span>}
                 </span>
                 <span className="summary__qty num">{l.quantity.toLocaleString('en-US')}</span>
               </li>
@@ -149,7 +149,7 @@ export default function CheckoutForm({ lines, totalUnits, org, account, onSignOu
           </p>
           {reviewCount > 0 && (
             <p className="hint">
-              HQ checks {reviewCount === 1 ? 'one of these supplies' : `${reviewCount} of these supplies`} by hand before shipping, so approval may take a little longer.
+              Our team checks {reviewCount === 1 ? 'one of these supplies' : `${reviewCount} of these supplies`} by hand before shipping, so approval may take a little longer.
             </p>
           )}
         </section>

@@ -92,6 +92,7 @@ function AuthFrame({ title, lede, children, contactEmail, onFill }) {
   useEffect(() => titleRef.current && titleRef.current.focus(), []);
   return (
     <div className="auth">
+      <a className="back" href="#/"><Icon name="back" size={18} /> Back to supplies</a>
       <section className="auth__card">
         <h1 className="page-title" tabIndex={-1} ref={titleRef}>{title}</h1>
         {lede && <p className="lede">{lede}</p>}
@@ -108,7 +109,7 @@ function AuthFrame({ title, lede, children, contactEmail, onFill }) {
 
 const NEXT_LABEL = { review: 'to send your request', requests: 'to see your requests' };
 
-export function SignIn({ next, onSignedIn, contactEmail }) {
+export function SignIn({ next, onSignedIn, contactEmail, lineCount = 0 }) {
   const [values, setValues] = useState({ email: '', password: '' });
   const [touched, setTouched] = useState({});
   const [error, setError] = useState(null);
@@ -150,8 +151,10 @@ export function SignIn({ next, onSignedIn, contactEmail }) {
 
   return (
     <AuthFrame
-      title="Sign in"
-      lede={next && NEXT_LABEL[next] ? `Sign in ${NEXT_LABEL[next]}. Your request is saved.` : 'Blueprints for Pangaea partner clinics'}
+      title={next === 'review' ? 'Sign in to send your request' : 'Sign in'}
+      lede={next === 'review' && lineCount > 0
+        ? `Your list of ${lineCount} ${lineCount === 1 ? 'supply is' : 'supplies is'} saved. Sign in and you’ll go straight back to it.`
+        : next && NEXT_LABEL[next] ? `Sign in ${NEXT_LABEL[next]}.` : 'Blueprints for Pangaea partner clinics'}
       contactEmail={contactEmail}
       foot
       onFill={() => setValues({ email: DEMO.email, password: DEMO.password })}
@@ -276,16 +279,16 @@ export function Welcome({ token, onSignedIn, contactEmail }) {
   }
   if (invite.status === 'bad') {
     const copy = {
-      expired: ['This invite link has expired', 'Invite links work for 7 days. Ask Blueprints HQ to send a new one.'],
+      expired: ['This invite link has expired', 'Invite links work for 7 days. Email us and we’ll send a new one.'],
       used: ['This invite was already used', 'Your account is set up. Sign in with your email and password.'],
-      invalid: ['This link doesn’t work', 'It may have been copied incompletely. Open the link straight from the email, or ask HQ for a new one.'],
+      invalid: ['This link doesn’t work', 'It may have been copied incompletely. Open the link straight from the email, or email us for a new one.'],
     }[invite.code] || [];
     return (
       <AuthFrame title={copy[0]} lede={copy[1]} contactEmail={contactEmail}>
         <div className="auth__form">
           {invite.code === 'used'
             ? <a className="btn btn--primary btn--lg" href="#/signin">Go to sign in</a>
-            : <a className="btn btn--secondary btn--lg" href={`mailto:${contactEmail}?subject=New%20invite%20link`}>Email HQ for a new link</a>}
+            : <a className="btn btn--secondary btn--lg" href={`mailto:${contactEmail}?subject=New%20invite%20link`}>Email us for a new link</a>}
         </div>
       </AuthFrame>
     );

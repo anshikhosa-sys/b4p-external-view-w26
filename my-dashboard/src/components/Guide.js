@@ -61,6 +61,16 @@ export default function Guide({ contactEmail, signedIn }) {
           This page walks you through asking for supplies, one step at a time. It takes about 10 minutes
           the first time and 2 or 3 minutes after that.
         </p>
+        <div className="guide__short" aria-labelledby="guide-short-title">
+          <p className="guide__short-title" id="guide-short-title">In short</p>
+          <ol>
+            <li><strong>Sign in</strong> with the email Blueprints invited.</li>
+            <li><strong>Add</strong> the supplies you need to your list.</li>
+            <li>Click <strong>Your list</strong> (top right), then <strong>Review and send</strong>.</li>
+            <li>Click <strong>Send request</strong>. We email you as it moves along.</li>
+          </ol>
+          <p>The rest of this page explains each step in detail.</p>
+        </div>
         <div className="guide__actions">
           <a className="btn btn--primary btn--lg" href="#/">Start a request</a>
           {!signedIn && <a className="btn btn--quiet btn--lg" href="#/signin">Sign in</a>}
@@ -187,27 +197,27 @@ export default function Guide({ contactEmail, signedIn }) {
 
           <Step id="check" n="5" title="Check your request">
             <p>
-              The <strong>Request</strong> button at the top right shows how many supplies you’ve added. Click it
-              to see your list.
+              The <strong>Your list</strong> button at the top right shows how many supplies you’ve added. Click it
+              to see them.
             </p>
             <Picture caption="The number is how many different supplies are on your request.">
-              <span className="header__slip mini-slip"><Icon name="slip" size={18} /> Request <span className="header__count">3</span></span>
+              <span className="header__slip mini-slip"><Icon name="slip" size={18} /> Your list <span className="header__count">3</span></span>
             </Picture>
-            <p>Read through the list and change any amounts. When it looks right, click <strong>Review request</strong>.</p>
+            <p>Read through the list and change any amounts. When it looks right, click <strong>Review and send</strong>.</p>
           </Step>
 
           <Step id="send" n="6" title="Send it">
             <ol className="guide__steps">
               <li>On the <strong>Review your request</strong> page, check the list one last time.</li>
               <li>Check that <strong>Sending as</strong> shows your clinic and your email. Updates are sent to that email.</li>
-              <li>Click <strong>Submit request</strong>.</li>
+              <li>Click <strong>Send request</strong>.</li>
             </ol>
             <p>
               You’ll see a page with your <strong>request number</strong> (it starts with <span className="num">REQ-</span>),
               and we’ll email you a copy. Keep the number in case you need to ask us about the request.
             </p>
             <p className="guide__note">
-              <strong>Clicked Submit and nothing happened?</strong> Wait a minute before trying again. The first
+              <strong>Clicked Send and nothing happened?</strong> Wait a minute before trying again. The first
               request after a quiet spell can be slow. The page tells you if something went wrong, and your list
               is never lost.
             </p>
@@ -235,7 +245,7 @@ export default function Guide({ contactEmail, signedIn }) {
             <dl className="guide__labels">
               <div><dt><span className="badge badge--low">Low stock</span></dt><dd>Only a few left. Ask soon if you need it.</dd></div>
               <div><dt><span className="badge badge--soon">Expires soon</span></dt><dd>Use-by date is close. Only ask if you can use it in time.</dd></div>
-              <div><dt><span className="badge badge--info">Needs HQ check</span></dt><dd>Our team checks this item by hand before it ships, so approval may take a little longer.</dd></div>
+              <div><dt><span className="badge badge--info">Team check</span></dt><dd>Our team checks this item by hand before it ships, so approval may take a little longer.</dd></div>
               <div><dt><span className="badge badge--hold">On hold</span></dt><dd>Set aside for another clinic. You can’t request it right now.</dd></div>
             </dl>
           </Step>

@@ -10,10 +10,10 @@ export default function RequestSlip({ lines, totalUnits, org, notice, onDismissN
   return (
     <section className="slip" aria-labelledby={headingId}>
       <div className="slip__band">
-        <h2 id={headingId} className="slip__title">Your request</h2>
+        <h2 id={headingId} className="slip__title">Your list</h2>
         <span className="slip__date">{today()}</span>
         {onClose && (
-          <button type="button" className="icon-btn slip__close" onClick={onClose} aria-label="Close your request" data-autofocus>
+          <button type="button" className="icon-btn slip__close" onClick={onClose} aria-label="Close your list" data-autofocus>
             <Icon name="close" />
           </button>
         )}
@@ -71,7 +71,7 @@ export default function RequestSlip({ lines, totalUnits, org, notice, onDismissN
             <p className="slip__limit">This request is full. It can include up to {MAX_LINES} different supplies.</p>
           )}
           <button type="button" className="btn btn--primary btn--block" onClick={onReview}>
-            Review request
+            Review and send
           </button>
           <button type="button" className="linklike slip__clearall" onClick={onClear}>Clear all</button>
         </div>
