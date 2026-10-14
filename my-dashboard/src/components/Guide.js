@@ -77,7 +77,7 @@ export default function Guide({ contactEmail, signedIn }) {
           <ol>
             <li><strong>Sign in</strong> with the email Blueprints invited.</li>
             <li>Click <strong>Add to list</strong> next to each supply you need.</li>
-            <li>Click <strong>Your list</strong> (top right), then <strong>Review and send</strong>.</li>
+            <li>Click <strong>Your list</strong> at the top, then <strong>Review and send</strong>.</li>
             <li>Click <strong>Send request</strong>. We email you as it moves along.</li>
           </ol>
           <p>The rest of this page explains each step. In every picture, a <span className="guide__red">red box</span> shows where to click.</p>
@@ -142,12 +142,12 @@ export default function Guide({ contactEmail, signedIn }) {
               and to see your past requests.
             </p>
             <ol className="guide__steps">
-              <li>Click <strong>Sign in</strong> at the top right of the page.</li>
+              <li>Click <strong>Sign in</strong> at the far right of the top of the page.</li>
             </ol>
             <Shot
-              src={headerSignIn} width={727} height={64}
-              alt="The top right of the page: How it works, Sign in with a red box around it, and Your list is empty."
-              caption="Sign in is at the top right of every page."
+              src={headerSignIn} width={737} height={64}
+              alt="The top of the page: How it works, Email for help, Your list is empty, and then, on its own at the far right, Sign in with a red box around it."
+              caption="Sign in is at the far right of the top of every page."
             />
             <ol className="guide__steps" start={2}>
               <li>Type your work email and your password.</li>
@@ -194,13 +194,13 @@ export default function Guide({ contactEmail, signedIn }) {
               caption="Click Add to list next to the supply you need."
             />
             <ol className="guide__steps" start={2}>
-              <li>The button turns into <strong>−</strong> and <strong>+</strong> buttons, and a green <strong>Added</strong> appears for a moment.</li>
+              <li>The button turns green and says <strong>Added</strong> for a moment, then becomes <strong>−</strong> and <strong>+</strong> buttons. The <strong>Your list</strong> button at the top also flashes, to show the supply went in.</li>
               <li>Click <strong>+</strong> to add more, or <strong>−</strong> for fewer. You can also click the number and type the amount you need.</li>
               <li>Keep going: add every supply your clinic needs before sending.</li>
             </ol>
             <Shot
-              src={howMany} width={987} height={123}
-              alt="The same row after clicking Add to list: minus button, the number 1, plus button, with a red box around them, and a green Added note underneath."
+              src={howMany} width={987} height={95}
+              alt="The same row after clicking Add to list: a minus button, the number 1 and a plus button, with a red box around them."
               caption="Use − and + to choose how many."
             />
             <ul className="guide__list">
@@ -212,11 +212,11 @@ export default function Guide({ contactEmail, signedIn }) {
 
           <Step id="check" n="5" title="Check your list">
             <ol className="guide__steps">
-              <li>Click <strong>Your list</strong> at the top right. The number shows how many different supplies you’ve added.</li>
+              <li>Click <strong>Your list</strong> at the top of the page. The number shows how many different supplies you’ve added.</li>
             </ol>
             <Shot
-              src={headerYourList} width={712} height={64}
-              alt="The top right of the page, with a red box around the dark blue Your list (3) button."
+              src={headerYourList} width={927} height={64}
+              alt="The top of the page: How it works, My requests, Email for help, the dark blue Your list (3) button with a red box around it, and the clinic’s name at the far right."
               caption="Your list (3) means you’ve added 3 different supplies."
             />
             <ol className="guide__steps" start={2}>
@@ -254,11 +254,11 @@ export default function Guide({ contactEmail, signedIn }) {
 
           <Step id="follow" n="7" title="Follow your request">
             <ol className="guide__steps">
-              <li>Click your clinic’s name at the top right.</li>
+              <li>Click your clinic’s name at the far right of the top of the page.</li>
               <li>Click <strong>My requests</strong>. Each request shows where it is. (<strong>Sign out</strong> is here too.)</li>
             </ol>
             <Shot
-              src={accountMenu} width={516} height={271} narrow
+              src={accountMenu} width={333} height={271} narrow
               alt="The menu that opens under the clinic name: Signed in as Ana Morales, then My requests with a red box around it, then Sign out."
               caption="Your clinic’s name opens this menu."
             />

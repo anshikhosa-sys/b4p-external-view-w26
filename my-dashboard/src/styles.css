@@ -3447,20 +3447,82 @@ h3 {
   position: relative;
 }
 
-.request-control__added {
+/* "Added": the Add button turns into a solid green "✓ Added" in the same spot, which then
+   fades away to show the − / + stepper underneath. Nothing else on the page moves or is
+   covered. Clicks pass through it to the stepper. White on #3f7239 is 5.6:1. */
+.request-control__stepper {
+  position: relative;
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-basis: 100%;
-  justify-content: flex-end;
-  margin-top: 4px;
-  color: var(--success);
-  font-size: var(--text-sm);
-  font-weight: var(--w-strong);
 }
 
-.detail__action .request-control__added {
-  justify-content: flex-start;
+.spec .request-control__stepper {
+  margin-left: auto;
+}
+
+.request-control__added {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--radius);
+  background: var(--success);
+  color: #fff;
+  font-size: var(--text-md);
+  font-weight: var(--w-strong);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: added-tag 1.8s ease both;
+}
+
+@keyframes added-tag {
+  0% { opacity: 0; transform: scale(0.97); }
+  12% { opacity: 1; transform: scale(1); }
+  60% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Your list: each addition sends a soft ring out from the button and pops the count. */
+.header__slip {
+  position: relative;
+}
+
+.header__slip-ring {
+  position: absolute;
+  inset: -1px;
+  border: 2px solid var(--blue-btn);
+  border-radius: var(--radius);
+  pointer-events: none;
+  animation: list-ring 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes list-ring {
+  0% { opacity: 0.9; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.18, 1.45); }
+}
+
+.header__slip-n {
+  display: inline-block;
+  animation: list-count 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes list-count {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+/* Reduced motion: no movement. "Added" simply shows, then goes. */
+@media (prefers-reduced-motion: reduce) {
+  .request-control__added,
+  .header__slip-n {
+    animation: none !important;
+  }
+
+  .header__slip-ring {
+    display: none;
+  }
 }
 
 /* Review page: the list first, then who it's from, then one big Send. */
@@ -3608,3 +3670,39 @@ h3 {
 .guide__steps[start='2'] {
   counter-reset: gstep 1;
 }
+
+/* Header order: title far left; How it works, My requests, Email for help, Your list;
+   then a gap, and the clinic profile (or Sign in) alone at the far right. */
+.header__nav {
+  align-items: center;
+}
+
+.header__profile {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-left: 16px;
+  padding-left: 24px;
+  border-left: 1px solid var(--line);
+}
+
+@media (max-width: 760px) {
+  .header__profile {
+    margin-left: 0;
+    padding-left: 12px;
+  }
+}
+
+/* Phones: one header row. The guide is linked from the home page and Help, so its
+   header link steps aside; the profile loses its divider. */
+@media (max-width: 480px) {
+  .header__link--help {
+    display: none;
+  }
+
+  .header__profile {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+

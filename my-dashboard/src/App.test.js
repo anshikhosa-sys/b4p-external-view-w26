@@ -243,7 +243,7 @@ describe('request drawer', () => {
     expect(headerRequest()).toHaveTextContent('Your list (1)');
   });
 
-  test('Add to list shows "Added" next to the stepper for 3 seconds', async () => {
+  test('Add to list shows "Added" over the stepper briefly', async () => {
     await renderAt('#/c/gloves', /^Nitrile gloves$/);
     jest.useFakeTimers();
     try {

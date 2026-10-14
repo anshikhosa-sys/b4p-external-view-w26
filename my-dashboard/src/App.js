@@ -478,6 +478,7 @@ export default function App() {
       <Header
         view={base.view}
         lineCount={cart.lines.length}
+        units={cart.totalUnits}
         onOpenSlip={() => navigate('/slip')}
         onOpenCategories={!wide && inCatalog && inventory.status === 'done' ? () => setCatsOpen(true) : null}
         onHome={() => setRawQuery('')}

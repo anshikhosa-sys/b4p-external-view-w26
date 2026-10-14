@@ -1,5 +1,5 @@
 import Icon from './Icons';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 function AccountMenu({ account, onSignOut }) {
   const ref = useRef(null);
@@ -24,7 +24,15 @@ function AccountMenu({ account, onSignOut }) {
   );
 }
 
-export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, onHome, siteName, account, onSignOut, authPage, showSignIn, contactEmail }) {
+export default function Header({ view, lineCount, units = 0, onOpenSlip, onOpenCategories, onHome, siteName, account, onSignOut, authPage, showSignIn, contactEmail }) {
+  // Counts up each time the list grows (a new supply, or more of one), to replay the animation.
+  const [bump, setBump] = useState(0);
+  const lastUnits = useRef(units);
+  useEffect(() => {
+    if (units > lastUnits.current) setBump((n) => n + 1);
+    lastUnits.current = units;
+  }, [units]);
+
   return (
     <header className="header">
       <div className="header__inner">
@@ -45,6 +53,11 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
           <a href="#/how-it-works" className="header__link header__link--help" aria-current={view === 'guide' ? 'page' : undefined}>
             <span className="header__help-long">How it works</span><span className="header__help-short">Guide</span>
           </a>
+          {(account || !showSignIn) && (
+            <a href="#/requests" className="header__link header__link--requests" aria-current={view === 'requests' ? 'page' : undefined}>
+              My requests
+            </a>
+          )}
           {/* One click opens an email to the team, already addressed. */}
           <a
             href={`mailto:${contactEmail}?subject=${encodeURIComponent('Help with a supply request')}`}
@@ -54,30 +67,30 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
             <Icon name="mail" size={18} />
             <span className="header__help-long">Email for help</span><span className="header__help-short">Help</span>
           </a>
-          {account || !showSignIn ? (
-            <a href="#/requests" className="header__link header__link--requests" aria-current={view === 'requests' ? 'page' : undefined}>
-              My requests
-            </a>
-          ) : !authPage && (
-            <a href="#/signin" className="header__link" aria-current={view === 'signin' ? 'page' : undefined}>
-              Sign in
-            </a>
-          )}
+          {!authPage && (lineCount ? (
+            <button type="button" className="header__slip" onClick={onOpenSlip}>
+              {/* Restarted (new key) each time something is added: a ring spreads out and the count pops. */}
+              {bump > 0 && <span key={`ring-${bump}`} className="header__slip-ring" aria-hidden="true" />}
+              <Icon name="slip" size={18} />
+              <span className="header__slip-label">Your list</span>{' '}
+              <span key={`n-${bump}`} className={`num${bump ? ' header__slip-n' : ''}`}>({lineCount})</span>
+              <span className="visually-hidden"> {lineCount === 1 ? 'supply' : 'supplies'}</span>
+            </button>
+          ) : (
+            // Still opens the (empty) list, but quietly: there is nothing to act on yet.
+            <button type="button" className="header__slip header__slip--empty" onClick={onOpenSlip}>
+              <Icon name="slip" size={18} /> Your list is empty
+            </button>
+          ))}
         </nav>
-        {account && <AccountMenu account={account} onSignOut={onSignOut} />}
-        {!authPage && (lineCount ? (
-          <button type="button" className="header__slip" onClick={onOpenSlip}>
-            <Icon name="slip" size={18} />
-            <span className="header__slip-label">Your list</span>{' '}
-            <span className="num">({lineCount})</span>
-            <span className="visually-hidden"> {lineCount === 1 ? 'supply' : 'supplies'}</span>
-          </button>
-        ) : (
-          // Still opens the (empty) list, but quietly: there is nothing to act on yet.
-          <button type="button" className="header__slip header__slip--empty" onClick={onOpenSlip}>
-            <Icon name="slip" size={18} /> Your list is empty
-          </button>
-        ))}
+        {/* The clinic's profile (or Sign in) sits alone at the far right, like the title on the far left. */}
+        {account ? (
+          <div className="header__profile"><AccountMenu account={account} onSignOut={onSignOut} /></div>
+        ) : showSignIn && !authPage && (
+          <div className="header__profile">
+            <a href="#/signin" className="header__link" aria-current={view === 'signin' ? 'page' : undefined}>Sign in</a>
+          </div>
+        )}
       </div>
     </header>
   );

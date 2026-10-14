@@ -3,16 +3,19 @@ import { canRequest } from '../inventory';
 import Icon from './Icons';
 import QuantityStepper from './QuantityStepper';
 
+const ADDED_MS = 1800; // matches the added-tag animation in styles.css
+
 // "Add to list" until the item is in the request, then a stepper. When the stepper
 // goes back to 0 while focused, focus moves to the Add button that replaces it.
 export default function RequestControl({ item, quantity, onChange, compact }) {
   const addRef = useRef(null);
   const stepperFocused = useRef(false);
-  // "Added" shows next to the stepper for 3 seconds after Add (the toast region announces it too).
+  // After Add, a green "Added" sits over the new stepper for a moment, then fades into it
+  // (the toast region announces it too).
   const [justAdded, setJustAdded] = useState(false);
   useEffect(() => {
     if (!justAdded) return undefined;
-    const t = setTimeout(() => setJustAdded(false), 3000);
+    const t = setTimeout(() => setJustAdded(false), ADDED_MS);
     return () => clearTimeout(t);
   }, [justAdded]);
 
@@ -54,16 +57,18 @@ export default function RequestControl({ item, quantity, onChange, compact }) {
         if (!e.currentTarget.contains(e.relatedTarget)) stepperFocused.current = false;
       }}
     >
-      <QuantityStepper
-        value={quantity}
-        max={item.quantity}
-        onChange={onChange}
-        itemName={item.name}
-        compact={compact}
-      />
-      {justAdded && (
-        <span className="request-control__added" aria-hidden="true"><Icon name="check" size={16} /> Added</span>
-      )}
+      <div className="request-control__stepper">
+        <QuantityStepper
+          value={quantity}
+          max={item.quantity}
+          onChange={onChange}
+          itemName={item.name}
+          compact={compact}
+        />
+        {justAdded && (
+          <span className="request-control__added" aria-hidden="true"><Icon name="check" size={18} /> Added</span>
+        )}
+      </div>
     </div>
   );
 }
