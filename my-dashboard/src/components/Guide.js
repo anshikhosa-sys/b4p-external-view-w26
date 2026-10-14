@@ -1,8 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
-import Icon from './Icons';
+import { useEffect, useRef } from 'react';
+import accountMenu from '../assets/guide/account-menu.webp';
+import addToList from '../assets/guide/add-to-list.webp';
+import categories from '../assets/guide/categories.webp';
+import headerSignIn from '../assets/guide/header-sign-in.webp';
+import headerYourList from '../assets/guide/header-your-list.webp';
+import howMany from '../assets/guide/how-many.webp';
+import review from '../assets/guide/review.webp';
+import search from '../assets/guide/search.webp';
+import setup from '../assets/guide/setup.webp';
+import signInForm from '../assets/guide/sign-in-form.webp';
+import yourList from '../assets/guide/your-list.webp';
 
-// "How to request supplies": a step-by-step guide for clinic staff.
-// The small pictures are drawn with the app's own styles so they match what people see.
+// "How to request supplies": a step-by-step guide for clinic staff. The pictures are real
+// screenshots of this site, with a red box around what to click.
 
 const SECTIONS = [
   ['before', 'Before you start'],
@@ -10,42 +20,31 @@ const SECTIONS = [
   ['signin', '2. Sign in'],
   ['find', '3. Find a supply'],
   ['amount', '4. Choose how many'],
-  ['check', '5. Check your request'],
+  ['check', '5. Check your list'],
   ['send', '6. Send it'],
   ['follow', '7. Follow your request'],
   ['labels', 'What the labels mean'],
   ['help', 'Questions and problems'],
 ];
 
-function Picture({ caption, children }) {
+// A screenshot. `alt` says what the picture shows, for people who can't see it.
+function Shot({ src, alt, caption, width, height, narrow }) {
   return (
-    <figure className="guide__pic">
-      <div className="guide__pic-frame" aria-hidden="true" inert="">{children}</div>
-      <figcaption>{caption}</figcaption>
+    <figure className={`guide__shot${narrow ? ' guide__shot--narrow' : ''}`}>
+      <img src={src} alt={alt} width={width} height={height} loading="lazy" decoding="async" />
+      {caption && <figcaption>{caption}</figcaption>}
     </figure>
   );
 }
 
-// Each section's title is always visible; its details open and close.
-function Step({ id, n, title, open, onToggle, children }) {
-  const bodyId = `guide-${id}-body`;
+function Step({ id, n, title, children }) {
   return (
     <section className="guide__step" id={`guide-${id}`} aria-labelledby={`guide-${id}-title`}>
       <h2 id={`guide-${id}-title`} className="guide__step-title">
         {n && <span className="guide__n">{n}</span>}
         {title}
       </h2>
-      <button
-        type="button"
-        className="guide__toggle linklike"
-        aria-expanded={open}
-        aria-controls={bodyId}
-        onClick={() => onToggle(id)}
-        aria-label={`${open ? 'Hide' : 'Show'} details: ${title}`}
-      >
-        {open ? 'Hide details' : 'Show details'}
-      </button>
-      <div className="guide__step-body" id={bodyId} hidden={!open}>{children}</div>
+      {children}
     </section>
   );
 }
@@ -53,31 +52,14 @@ function Step({ id, n, title, open, onToggle, children }) {
 export default function Guide({ contactEmail, signedIn }) {
   const titleRef = useRef(null);
   useEffect(() => titleRef.current && titleRef.current.focus(), []);
-  // Only the first section starts open; "In short" above is the main content.
-  const [open, setOpen] = useState(() => new Set([SECTIONS[0][0]]));
-  const toggle = (id) => setOpen((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    return next;
-  });
-  const step = (id) => ({ id, open: open.has(id), onToggle: toggle });
-  const [jumpTo, setJumpTo] = useState(null);
-  // A contents link opens its section, then moves there once it has rendered open.
-  useEffect(() => {
-    if (!jumpTo) return;
-    const el = document.getElementById(`guide-${jumpTo}`);
+  const jump = (id) => (e) => {
+    e.preventDefault();
+    const el = document.getElementById(`guide-${id}`);
     if (el) {
       el.scrollIntoView({ block: 'start' });
       el.querySelector('h2').setAttribute('tabindex', '-1');
       el.querySelector('h2').focus({ preventScroll: true });
     }
-    setJumpTo(null);
-  }, [jumpTo]);
-  const jump = (id) => (e) => {
-    e.preventDefault();
-    setOpen((prev) => new Set(prev).add(id));
-    setJumpTo(id);
   };
 
   return (
@@ -87,8 +69,8 @@ export default function Guide({ contactEmail, signedIn }) {
         <h1 className="guide__title" tabIndex={-1} ref={titleRef}>How to request supplies</h1>
         <p className="guide__lede">
           Blueprints for Pangaea collects unused medical supplies and sends them to clinics that need them.
-          This page walks you through asking for supplies, one step at a time. It takes about 10 minutes
-          the first time and 2 or 3 minutes after that.
+          This page shows you how to ask for supplies, one step at a time, with a picture of each step.
+          It takes about 10 minutes the first time and 2 or 3 minutes after that.
         </p>
         <div className="guide__short" aria-labelledby="guide-short-title">
           <p className="guide__short-title" id="guide-short-title">In short</p>
@@ -98,7 +80,7 @@ export default function Guide({ contactEmail, signedIn }) {
             <li>Click <strong>Your list</strong> (top right), then <strong>Review and send</strong>.</li>
             <li>Click <strong>Send request</strong>. We email you as it moves along.</li>
           </ol>
-          <p>The rest of this page explains each step in detail.</p>
+          <p>The rest of this page explains each step. In every picture, a <span className="guide__red">red box</span> shows where to click.</p>
         </div>
         <div className="guide__actions">
           <a className="btn btn--primary btn--lg" href="#/">Start a request</a>
@@ -117,7 +99,7 @@ export default function Guide({ contactEmail, signedIn }) {
         </nav>
 
         <div className="guide__body">
-          <Step {...step('before')} title="Before you start">
+          <Step id="before" title="Before you start">
             <p>You will need:</p>
             <ul className="guide__list">
               <li><strong>The invite email from Blueprints.</strong> Each partner clinic gets one, with a link to set up your account.</li>
@@ -134,28 +116,19 @@ export default function Guide({ contactEmail, signedIn }) {
             </p>
           </Step>
 
-          <Step {...step('account')} n="1" title="Set up your account (first time only)">
+          <Step id="account" n="1" title="Set up your account (first time only)">
             <ol className="guide__steps">
               <li>Open the invite email from Blueprints and click the link in it.</li>
               <li>A page opens showing your clinic’s name and your email. <strong>Check that both are right.</strong> If not, stop and email us.</li>
               <li>Choose a password and type it in the <strong>New password</strong> box. The list under the box turns green as your password meets each rule.</li>
               <li>Type the same password again in <strong>Confirm password</strong>.</li>
-              <li>Click <strong>Finish setup</strong>. You’re now signed in.</li>
+              <li>Click the blue <strong>Finish setup</strong> button. You’re now signed in.</li>
             </ol>
-            <Picture caption="The setup page. Your clinic’s name and email are filled in for you.">
-              <div className="mini-card">
-                <p className="mini-title">Welcome, Joseph</p>
-                <div className="mini-facts"><span>Clinic</span><b>Hillside Health Center</b><span>Email</span><b>nurse@hillside.org</b></div>
-                <p className="mini-label">New password</p>
-                <div className="mini-input">••••••••••••</div>
-                <ul className="rules">
-                  <li className="rules__ok"><Icon name="check" size={16} />At least 10 characters</li>
-                  <li className="rules__ok"><Icon name="check" size={16} />Doesn’t contain your email</li>
-                  <li className="rules__ok"><Icon name="check" size={16} />Not a common password</li>
-                </ul>
-                <span className="btn btn--primary btn--block">Finish setup</span>
-              </div>
-            </Picture>
+            <Shot
+              src={setup} width={464} height={751} narrow
+              alt="The setup page: the clinic name and email are filled in, both password boxes are filled, all three rules are ticked green, and the Finish setup button at the bottom has a red box around it."
+              caption="The setup page. Your clinic’s name and email are already filled in. Click Finish setup."
+            />
             <p className="guide__tip">
               <strong>Picking a password:</strong> a short sentence is easy to remember and hard to guess,
               like <em>river bend clinic supplies</em>. Write it somewhere safe at your clinic.
@@ -163,84 +136,111 @@ export default function Guide({ contactEmail, signedIn }) {
             <p>The invite link works for 7 days. If it has expired, the page will tell you, and you can ask us for a new one.</p>
           </Step>
 
-          <Step {...step('signin')} n="2" title="Sign in">
+          <Step id="signin" n="2" title="Sign in">
             <p>
-              You can look at the supply list without signing in. You need to sign in to send a request
+              You can look at the supplies without signing in. You need to sign in to send a request
               and to see your past requests.
             </p>
             <ol className="guide__steps">
               <li>Click <strong>Sign in</strong> at the top right of the page.</li>
+            </ol>
+            <Shot
+              src={headerSignIn} width={727} height={64}
+              alt="The top right of the page: How it works, Sign in with a red box around it, and Your list is empty."
+              caption="Sign in is at the top right of every page."
+            />
+            <ol className="guide__steps" start={2}>
               <li>Type your work email and your password.</li>
               <li>Click the blue <strong>Sign in</strong> button.</li>
             </ol>
-            <p>
-              When you’re signed in, your clinic’s name shows at the top right. Click it to see{' '}
-              <strong>My requests</strong> or to <strong>Sign out</strong>.
-            </p>
+            <Shot
+              src={signInForm} width={464} height={486} narrow
+              alt="The sign-in page with the Email and Password boxes filled in, and a red box around the blue Sign in button."
+              caption="Type your email and password, then click Sign in."
+            />
             <p className="guide__tip">
               <strong>Using a shared computer?</strong> Sign out when you finish, so the next person can’t send
-              requests in your clinic’s name.
+              requests in your clinic’s name. Step 7 shows where Sign out is.
             </p>
           </Step>
 
-          <Step {...step('find')} n="3" title="Find a supply">
-            <p>There are two ways to find what you need:</p>
-            <ul className="guide__list">
-              <li>
-                <strong>Search.</strong> Type a word in the search box at the top, like <em>gloves</em>,{' '}
-                <em>syringe</em> or <em>gauze</em>. Results show as you type. Short, simple words work best.
-              </li>
-              <li>
-                <strong>Browse.</strong> The home page lists every category, like <em>Wound Care</em> or{' '}
-                <em>Needles &amp; Syringes</em>. Click a category, then a type of supply.
-              </li>
-            </ul>
-            <Picture caption="The search box is at the top of every page.">
-              <div className="mini-search"><Icon name="search" size={18} /> gloves</div>
-            </Picture>
+          <Step id="find" n="3" title="Find a supply">
+            <p>There are two ways to find what you need.</p>
+            <p><strong>Way 1: search.</strong> Type a word in the <strong>What do you need?</strong> box at the top of the page, like <em>gloves</em>, <em>syringe</em> or <em>gauze</em>. The supplies show up as you type. Short, simple words work best.</p>
+            <Shot
+              src={search} width={788} height={174}
+              alt="The search box, labelled What do you need?, with the word gloves typed in it and a blue Search button. A red box is around it."
+              caption="The search box is at the top of the supply pages."
+            />
+            <p><strong>Way 2: choose a category.</strong> Click a category, like <em>Gloves</em> or <em>Wound Care</em>. The list of all categories is on the left. On a phone, tap <strong>Categories</strong> at the top of the screen.</p>
+            <Shot
+              src={categories} width={920} height={600}
+              alt="The home page: the list of categories on the left, the search box at the top, and the category boxes below. A red box is around the Airway & Oxygen category."
+              caption="Click any category box, or a name in the list on the left."
+            />
             <p>
               Each supply shows its name, the maker, how many are in stock and its use-by date. Click a supply’s
-              name to see more detail, including each batch we have.
+              name to see more about it.
             </p>
           </Step>
 
-          <Step {...step('amount')} n="4" title="Choose how many">
+          <Step id="amount" n="4" title="Choose how many">
             <ol className="guide__steps">
               <li>Next to the supply, click <strong>Add to list</strong>. One is added to your list.</li>
-              <li>Use <strong>+</strong> and <strong>−</strong> to change the amount, or click the number and type the amount you need.</li>
+            </ol>
+            <Shot
+              src={addToList} width={987} height={89}
+              alt="One supply row: Elastic bandage, the maker, the batch, Use by Jul 2028, 98 in stock, and an Add to list button with a red box around it."
+              caption="Click Add to list next to the supply you need."
+            />
+            <ol className="guide__steps" start={2}>
+              <li>The button turns into <strong>−</strong> and <strong>+</strong> buttons, and a green <strong>Added</strong> appears for a moment.</li>
+              <li>Click <strong>+</strong> to add more, or <strong>−</strong> for fewer. You can also click the number and type the amount you need.</li>
               <li>Keep going: add every supply your clinic needs before sending.</li>
             </ol>
-            <Picture caption="Before and after clicking Add to list.">
-              <div className="mini-row">
-                <span className="btn btn--secondary btn--sm">Add to list</span>
-                <span className="mini-arrow">→</span>
-                <span className="mini-stepper"><span>−</span><b>12</b><span>+</span></span>
-              </div>
-            </Picture>
+            <Shot
+              src={howMany} width={987} height={123}
+              alt="The same row after clicking Add to list: minus button, the number 1, plus button, with a red box around them, and a green Added note underneath."
+              caption="Use − and + to choose how many."
+            />
             <ul className="guide__list">
-              <li>You can’t ask for more than we have in stock. The box stops at the most available.</li>
-              <li>To remove a supply, lower it to 0 or click <strong>Remove</strong>. If you remove something by mistake, click <strong>Undo</strong> on the message at the bottom of the screen.</li>
-              <li>Your request is saved on this computer, so you can close the page and come back later.</li>
+              <li>You can’t ask for more than we have in stock. The number stops at the most available.</li>
+              <li>To take a supply off, lower it to 0 or click <strong>Remove</strong> in your list. If you remove something by mistake, click <strong>Undo</strong> on the message at the bottom of the screen.</li>
+              <li>Your list is saved on this computer, so you can close the page and come back later.</li>
             </ul>
           </Step>
 
-          <Step {...step('check')} n="5" title="Check your request">
-            <p>
-              The <strong>Your list</strong> button at the top right shows how many supplies you’ve added. Click it
-              to see them.
-            </p>
-            <Picture caption="The number is how many different supplies are on your request.">
-              <span className="header__slip mini-slip"><Icon name="slip" size={18} /> Your list (3)</span>
-            </Picture>
-            <p>Read through the list and change any amounts. When it looks right, click <strong>Review and send</strong>.</p>
+          <Step id="check" n="5" title="Check your list">
+            <ol className="guide__steps">
+              <li>Click <strong>Your list</strong> at the top right. The number shows how many different supplies you’ve added.</li>
+            </ol>
+            <Shot
+              src={headerYourList} width={712} height={64}
+              alt="The top right of the page, with a red box around the dark blue Your list (3) button."
+              caption="Your list (3) means you’ve added 3 different supplies."
+            />
+            <ol className="guide__steps" start={2}>
+              <li>Your list opens on the right side. Read through it and change any amounts.</li>
+              <li>When it looks right, click the blue <strong>Review and send</strong> button at the bottom.</li>
+            </ol>
+            <Shot
+              src={yourList} width={480} height={900} narrow
+              alt="Your list, open on the right: three supplies, each with minus and plus buttons and Remove. At the bottom, a red box is around the blue Review and send button."
+              caption="Your list. Click Review and send when it looks right."
+            />
           </Step>
 
-          <Step {...step('send')} n="6" title="Send it">
+          <Step id="send" n="6" title="Send it">
             <ol className="guide__steps">
-              <li>On the <strong>Review your request</strong> page, check the list one last time.</li>
-              <li>Check that <strong>Sending as</strong> shows your clinic and your email. Updates are sent to that email.</li>
-              <li>Click <strong>Send request</strong>.</li>
+              <li>On the <strong>Review your request</strong> page, check the list of supplies one last time.</li>
+              <li>Check that <strong>Sending as</strong> shows your clinic and your email. We send updates to that email.</li>
+              <li>Click the big blue <strong>Send request</strong> button.</li>
             </ol>
+            <Shot
+              src={review} width={792} height={713}
+              alt="The Review your request page: the supplies requested, the Sending as box with the clinic and email, and a red box around the blue Send request button."
+              caption="Check the supplies and Sending as, then click Send request."
+            />
             <p>
               You’ll see a page with your <strong>request number</strong> (it starts with <span className="num">REQ-</span>),
               and we’ll email you a copy. Keep the number in case you need to ask us about the request.
@@ -252,11 +252,17 @@ export default function Guide({ contactEmail, signedIn }) {
             </p>
           </Step>
 
-          <Step {...step('follow')} n="7" title="Follow your request">
-            <p>
-              Open <strong>My requests</strong> from the menu at the top right. Each request shows where it is.
-              We also email you each time it moves to the next step.
-            </p>
+          <Step id="follow" n="7" title="Follow your request">
+            <ol className="guide__steps">
+              <li>Click your clinic’s name at the top right.</li>
+              <li>Click <strong>My requests</strong>. Each request shows where it is. (<strong>Sign out</strong> is here too.)</li>
+            </ol>
+            <Shot
+              src={accountMenu} width={516} height={271} narrow
+              alt="The menu that opens under the clinic name: Signed in as Ana Morales, then My requests with a red box around it, then Sign out."
+              caption="Your clinic’s name opens this menu."
+            />
+            <p>We also email you each time your request moves to the next step:</p>
             <dl className="guide__status">
               <div><dt>Submitted</dt><dd>We have your request. Nothing for you to do.</dd></div>
               <div><dt>Under review</dt><dd>Someone on our team is checking it against what we have.</dd></div>
@@ -270,16 +276,16 @@ export default function Guide({ contactEmail, signedIn }) {
             </p>
           </Step>
 
-          <Step {...step('labels')} title="What the labels mean">
+          <Step id="labels" title="What the labels mean">
             <dl className="guide__labels">
               <div><dt><span className="badge badge--low">Low stock</span></dt><dd>Only a few left. Ask soon if you need it.</dd></div>
-              <div><dt><span className="badge badge--soon">Expires soon</span></dt><dd>Use-by date is close. Only ask if you can use it in time.</dd></div>
+              <div><dt><span className="badge badge--soon">Expires soon</span></dt><dd>The use-by date is close. Only ask if you can use it in time.</dd></div>
               <div><dt><span className="badge badge--info">Team check</span></dt><dd>Our team checks this item by hand before it ships, so approval may take a little longer.</dd></div>
               <div><dt><span className="badge badge--hold">On hold</span></dt><dd>Set aside for another clinic. You can’t request it right now.</dd></div>
             </dl>
           </Step>
 
-          <Step {...step('help')} title="Questions and problems">
+          <Step id="help" title="Questions and problems">
             <dl className="guide__faq">
               <div>
                 <dt>I forgot my password.</dt>

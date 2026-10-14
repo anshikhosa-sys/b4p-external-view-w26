@@ -1,12 +1,11 @@
 import Icon from './Icons';
 import { useRef } from 'react';
-import SearchBar from './SearchBar';
 
 function AccountMenu({ account, onSignOut }) {
   const ref = useRef(null);
   return (
     <details className="acct" ref={ref}>
-      <summary className="acct__btn">
+      <summary className="acct__btn" aria-label={`${account.org}, account menu`}>
         <span className="acct__initial" aria-hidden="true">{account.org.trim().charAt(0).toUpperCase()}</span>
         <span className="acct__org">{account.org}</span>
         <span className="acct__label">Account</span>
@@ -25,11 +24,11 @@ function AccountMenu({ account, onSignOut }) {
   );
 }
 
-export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, query, onQuery, total, siteName, account, onSignOut, authPage, showSignIn }) {
+export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, onHome, siteName, account, onSignOut, authPage, showSignIn, contactEmail }) {
   return (
     <header className="header">
       <div className="header__inner">
-        <a className="header__brand" href="#/" onClick={() => onQuery('')} aria-label={`${siteName}, home`}>
+        <a className="header__brand" href="#/" onClick={onHome} aria-label={`${siteName}, home`}>
           {/* Inlined into the CSS as a data: URI, so the page makes no image requests. */}
           <span className="header__logo" role="img" aria-label="Blueprints for Pangaea" />
           <span className="header__name">
@@ -42,10 +41,18 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
             <Icon name="list" size={18} /> <span className="header__cats-label">Categories</span>
           </button>
         )}
-        {!authPage && <SearchBar value={query} onChange={onQuery} total={total} />}
         <nav className="header__nav" aria-label="Main">
           <a href="#/how-it-works" className="header__link header__link--help" aria-current={view === 'guide' ? 'page' : undefined}>
-            <span className="header__help-long">How it works</span><span className="header__help-short">Help</span>
+            <span className="header__help-long">How it works</span><span className="header__help-short">Guide</span>
+          </a>
+          {/* One click opens an email to the team, already addressed. */}
+          <a
+            href={`mailto:${contactEmail}?subject=${encodeURIComponent('Help with a supply request')}`}
+            className="header__email"
+            aria-label={`Get help: email ${contactEmail}`}
+          >
+            <Icon name="mail" size={18} />
+            <span className="header__help-long">Email for help</span><span className="header__help-short">Help</span>
           </a>
           {account || !showSignIn ? (
             <a href="#/requests" className="header__link header__link--requests" aria-current={view === 'requests' ? 'page' : undefined}>
@@ -68,7 +75,7 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
         ) : (
           // Still opens the (empty) list, but quietly: there is nothing to act on yet.
           <button type="button" className="header__slip header__slip--empty" onClick={onOpenSlip}>
-            Your list is empty
+            <Icon name="slip" size={18} /> Your list is empty
           </button>
         ))}
       </div>

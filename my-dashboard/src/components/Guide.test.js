@@ -2,10 +2,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Guide from './Guide';
 
-test('the guide lists every step and how to reach HQ', () => {
+test('the guide lists every step and how to reach our team', () => {
   render(<Guide contactEmail="contact@b4pglobal.org" signedIn={false} />);
   expect(screen.getByRole('heading', { level: 1, name: 'How to request supplies' })).toHaveFocus();
-  for (const title of ['Set up your account', 'Sign in', 'Find a supply', 'Choose how many', 'Check your request', 'Send it', 'Follow your request']) {
+  for (const title of ['Set up your account', 'Sign in', 'Find a supply', 'Choose how many', 'Check your list', 'Send it', 'Follow your request']) {
     expect(screen.getByRole('heading', { level: 2, name: new RegExp(title) })).toBeInTheDocument();
   }
   expect(screen.getAllByRole('link', { name: 'contact@b4pglobal.org' }).length).toBeGreaterThan(0);
@@ -17,15 +17,11 @@ test('signed-in clinics don’t see the Sign in button', () => {
   expect(screen.queryByRole('link', { name: 'Sign in' })).not.toBeInTheDocument();
 });
 
-test('only the first section starts open; the contents open the section they jump to', () => {
-  Element.prototype.scrollIntoView = jest.fn(); // jsdom has no layout
+test('every step has a screenshot with a description', () => {
   render(<Guide contactEmail="contact@b4pglobal.org" signedIn={false} />);
-  expect(screen.getByRole('button', { name: 'Hide details: Before you start' })).toHaveAttribute('aria-expanded', 'true');
-  const send = screen.getByRole('button', { name: 'Show details: Send it' });
-  expect(send).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.getByText(/Clicked Send and nothing happened/)).not.toBeVisible();
-  userEvent.click(screen.getByRole('link', { name: '6. Send it' }));
-  expect(send).toHaveAttribute('aria-expanded', 'true');
-  expect(screen.getByText(/Clicked Send and nothing happened/)).toBeVisible();
+  const shots = screen.getAllByRole('img');
+  expect(shots.length).toBeGreaterThanOrEqual(10);
+  for (const img of shots) expect(img.getAttribute('alt').length).toBeGreaterThan(30);
+  expect(screen.getByRole('img', { name: /red box around the blue Send request button/ })).toBeInTheDocument();
   expect(screen.getByText('In short')).toBeInTheDocument();
 });

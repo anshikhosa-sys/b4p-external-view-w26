@@ -377,51 +377,6 @@ button:disabled {
   display: none;
 }
 
-.search {
-  position: relative;
-  flex: 1;
-  min-width: 160px;
-  max-width: 640px;
-}
-
-.search__icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--ink-2);
-  pointer-events: none;
-}
-
-.search__input {
-  width: 100%;
-  height: var(--target);
-  padding: 0 44px 0 40px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: #fff;
-  font-size: var(--text-md);
-}
-
-.search__input::placeholder {
-  color: var(--ink-2);
-}
-
-.search__input::-webkit-search-cancel-button {
-  display: none;
-}
-
-.search__input:focus-visible {
-  border-color: var(--blue);
-  outline-offset: 0;
-}
-
-.search__clear {
-  position: absolute;
-  right: 0;
-  top: 0;
-}
-
 .header__nav {
   display: flex;
   margin-left: auto;
@@ -457,16 +412,6 @@ button:disabled {
 
 .header__slip:hover {
   background: var(--tint);
-}
-
-.header__count {
-  min-width: 26px;
-  padding: 1px 7px;
-  border-radius: 4px;
-  background: var(--ink);
-  color: #fff;
-  font-size: var(--text-sm);
-  text-align: center;
 }
 
 /* ── Page frame ───────────────────────────────────────────────────────── */
@@ -592,16 +537,6 @@ button:disabled {
   color: var(--blue);
 }
 
-/* ── Landing ──────────────────────────────────────────────────────────── */
-
-.landing__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px 24px;
-}
-
 .landing__grid {
   /* Row-major so the categories read A–Z across each row; cards in a row share a height. */
   display: grid;
@@ -685,14 +620,6 @@ button:disabled {
   color: var(--blue);
 }
 
-.cat__count,
-.cat__n {
-  flex: none;
-  color: var(--ink-2);
-  font-size: var(--text-xs);
-  font-weight: 400;
-}
-
 .cat__types {
   padding-top: 8px;
   font-size: var(--text-sm);
@@ -711,15 +638,6 @@ button:disabled {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.cat__toggle {
-  align-self: flex-start;
-  min-height: var(--target);
-  margin-top: auto;
-  color: var(--blue);
-  font-size: var(--text-sm);
-  font-weight: 600;
 }
 
 /* ── Type tiles ───────────────────────────────────────────────────────── */
@@ -957,12 +875,6 @@ button:disabled {
 
   .spec__stock {
     width: 64px;
-  }
-}
-
-@media (max-width: 1099px) {
-  .exp-from {
-    display: none;
   }
 }
 
@@ -1996,11 +1908,6 @@ button:disabled {
     gap: 8px 12px;
   }
 
-  .search {
-    order: 5;
-    flex-basis: 100%;
-    max-width: none;
-  }
 }
 
 @media (max-width: 760px) {
@@ -2047,8 +1954,6 @@ button:disabled {
     width: 40px;
     height: 40px;
   }
-
-
 
   /* Tables become stacked rows: name, then labelled facts, then the stepper. */
   .spec,
@@ -2185,7 +2090,6 @@ button:disabled {
 .search-results .tiles {
   margin-top: 12px;
 }
-
 
 /* ── Lots (one product held in several lots) ──────────────────────────── */
 
@@ -2678,7 +2582,6 @@ button:disabled {
   grid-template-columns: 120px 1fr;
 }
 
-
 /* ── Blueprints website look ─────────────────────────────────────────── */
 
 .page-title,
@@ -2730,11 +2633,6 @@ h3 {
 
 .header__slip:hover {
   background: #1b2560;
-}
-
-.header__count {
-  background: #fff;
-  color: var(--navy);
 }
 
 .footer {
@@ -3168,7 +3066,6 @@ h3 {
   }
 }
 
-
 /* ── Clearer for first-time users ─────────────────────────────────────── */
 
 /* "Add" is an outline button, so the one filled blue button on screen is the next step. */
@@ -3183,14 +3080,16 @@ h3 {
 }
 
 /* Labels in muted brand tints instead of bright red and yellow. */
+/* Low stock and Expires soon keep Vish's brighter colours: they are the two labels
+   people must notice. #2b2100 on #f5c518 is 11:1, white on #c8102e is 5.9:1. */
 .badge--low {
-  background: var(--warn-tint);
-  color: #6b4500;
+  background: #f5c518;
+  color: #2b2100;
 }
 
 .badge--soon {
-  background: var(--danger-tint);
-  color: var(--danger-text);
+  background: #c8102e;
+  color: #fff;
 }
 
 .badge--info {
@@ -3248,7 +3147,6 @@ h3 {
     display: inline;
   }
 }
-
 
 /* ── Plain-reading pass (rhea/login-ui) ───────────────────────────────
    Bigger text, near-black labels, larger targets, and the simpler home page,
@@ -3390,59 +3288,13 @@ h3 {
   }
 }
 
-/* How it works, in one line. */
-.how {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 24px;
-  max-width: 760px;
-  margin-top: 16px;
-  padding: 12px 16px;
-  border-radius: var(--radius);
-  background: var(--tint);
-  color: var(--ink);
-}
-
-.how:hover {
-  text-decoration: none;
-  background: #e3ded2;
-}
-
-.how__steps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
-}
-
-.how__steps li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.how__n {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--navy);
-  color: #fff;
-  font-weight: var(--w-strong);
-}
-
-.how__more {
-  margin-left: auto;
-  color: var(--blue);
-  font-weight: var(--w-strong);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .landing__browse {
-  margin-top: 40px;
+  margin-top: 32px;
+}
+
+/* The search box sits above every supply page, under the step bar. */
+.shop__main > .find {
+  margin: 0 0 24px;
 }
 
 /* Category tiles: the heading is one big link (name, then how many kinds). */
@@ -3466,12 +3318,22 @@ h3 {
 
 .cat__title a.cat__link {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
+  align-items: center;
+  gap: 16px;
   min-height: 88px;
   padding: 16px 20px;
   color: var(--heading);
+}
+
+.cat__link .cat__art {
+  color: var(--heading);
+}
+
+.cat__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .cat__title a.cat__link:hover {
@@ -3636,17 +3498,33 @@ h3 {
   text-underline-offset: 3px;
 }
 
-/* Guide: titles always show; details open one section at a time. */
-.guide__toggle {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--target);
-  color: var(--blue);
-  font-weight: var(--w-strong);
+/* Guide screenshots: real pictures of the site, with a red box around what to click. */
+.guide__shot {
+  margin: 16px 0 24px;
 }
 
-.guide__step-body {
+.guide__shot img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.guide__shot--narrow img {
+  max-width: min(100%, 420px);
+}
+
+.guide__shot figcaption {
   margin-top: 8px;
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.guide__red {
+  color: #b40f1a;
+  font-weight: var(--w-strong);
 }
 
 /* Narrow spaces (phones, the list drawer): steps wrap cleanly, without dashes. */
@@ -3668,8 +3546,65 @@ h3 {
   content: none;
 }
 
-
 /* The phone layout labels each table cell; those labels are near-black too. */
 .spec td[data-label]::before {
   color: var(--ink);
+}
+
+/* Help at the top of every page: opens an email to the team. */
+.header__email {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--target);
+  padding: 0 14px;
+  border: 1px solid var(--blue);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--blue);
+  font-weight: var(--w-strong);
+  white-space: nowrap;
+}
+
+.header__email:hover {
+  background: var(--blue-50);
+  text-decoration: none;
+}
+
+@media (max-width: 760px) {
+  .header__email {
+    padding: 0 10px;
+  }
+}
+
+/* Mid-size screens: shorter header labels so everything fits on one line.
+   (My requests is also in the account menu.) */
+@media (max-width: 1179px) {
+  .header__help-long {
+    display: none;
+  }
+
+  .header__help-short {
+    display: inline;
+  }
+
+  .header__link--requests {
+    display: none;
+  }
+
+  .header__nav {
+    gap: 16px;
+  }
+}
+
+/* Under 1000px the account button is just the clinic's initial (its name is read out). */
+@media (max-width: 999px) {
+  .acct__label {
+    display: none;
+  }
+}
+
+/* A list that continues after a picture keeps counting (<ol start="2">). */
+.guide__steps[start='2'] {
+  counter-reset: gstep 1;
 }

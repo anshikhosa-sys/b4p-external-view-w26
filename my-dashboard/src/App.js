@@ -14,6 +14,7 @@ import MyRequests from './components/MyRequests';
 import Progress from './components/Progress';
 import RequestSlip from './components/RequestSlip';
 import { ForgotPassword, SignIn, Welcome } from './components/SignIn';
+import SearchBar from './components/SearchBar';
 import SearchResults from './components/SearchResults';
 import { EmptyState, ErrorState, SkeletonTable, WakingNotice } from './components/States';
 import { closeTo, navigate, useDebounced, useHashRoute, useMediaQuery } from './hooks';
@@ -424,11 +425,10 @@ export default function App() {
         </EmptyState>
       );
     } else {
-      page = <Landing catalog={catalog} onSearch={onQuery} />;
+      page = <Landing catalog={catalog} />;
     }
 
-    // The home page's category tiles replace the category list, so it shows everywhere else.
-    const showTree = wide && inventory.status === 'done' && (base.view !== 'catalog' || !!searchView);
+    const showTree = wide && inventory.status === 'done';
     main = (
       <div className={`shop${showTree ? '' : ' shop--full'}`}>
         {showTree && (
@@ -456,7 +456,9 @@ export default function App() {
           {inventory.status === 'done' && !inventory.fresh && !inventory.error && slow && (
             <p className="stale" role="status">Showing the list saved on this device while the server wakes up.</p>
           )}
-          {inventory.status === 'done' && <Progress step={1} />}
+          {/* One step bar on screen: the list drawer shows its own (step 2). */}
+          {inventory.status === 'done' && route.view !== 'slip' && <Progress step={1} />}
+          {inventory.status === 'done' && <SearchBar value={rawQuery} onChange={onQuery} />}
           {page}
         </div>
       </div>
@@ -478,14 +480,13 @@ export default function App() {
         lineCount={cart.lines.length}
         onOpenSlip={() => navigate('/slip')}
         onOpenCategories={!wide && inCatalog && inventory.status === 'done' ? () => setCatsOpen(true) : null}
-        query={rawQuery}
-        onQuery={onQuery}
-        total={catalogTotal}
+        onHome={() => setRawQuery('')}
         siteName={SITE_NAME}
         account={account}
         onSignOut={onSignOut}
         authPage={AUTH_VIEWS.includes(base.view)}
         showSignIn={authOn}
+        contactEmail={CONTACT_EMAIL}
       />
       <main id="main" tabIndex={-1} className="main">
         {main}
