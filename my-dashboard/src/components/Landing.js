@@ -1,99 +1,77 @@
-import { memo, useCallback, useEffect, useState } from 'react';
-import { iconForSubcategory, ProductIcon } from '../catalogIcons';
+import { memo, useState } from 'react';
+import Icon from './Icons';
 
 const FIRST = 6;
-const OPEN_KEY = 'b4p.landing.open.v1'; // which cards are expanded, for this browser session
 
-function readOpen() {
-  try {
-    const v = JSON.parse(window.sessionStorage.getItem(OPEN_KEY));
-    return new Set(Array.isArray(v) ? v.filter((s) => typeof s === 'string') : []);
-  } catch {
-    return new Set();
-  }
-}
+const kinds = (n) => `${n} ${n === 1 ? 'kind' : 'kinds'} of supplies`;
 
-// The home page: every category (A–Z across rows) as an even card listing its
-// first types, expandable to all of them.
-function Landing({ catalog, total }) {
-  const [open, setOpen] = useState(readOpen);
-  useEffect(() => {
-    try {
-      window.sessionStorage.setItem(OPEN_KEY, JSON.stringify([...open]));
-    } catch {
-      // Storage unavailable: the choice just won't survive a reload.
-    }
-  }, [open]);
-
-  const toggle = useCallback((slug) => setOpen((prev) => {
-    const next = new Set(prev);
-    if (next.has(slug)) next.delete(slug);
-    else next.add(slug);
-    return next;
-  }), []);
-
-  const long = catalog.filter((c) => c.types.length > FIRST);
-  const allOpen = long.length > 0 && long.every((c) => open.has(c.slug));
-
+// The home page: a big search first, how it works in one line, then one large
+// tile per category (A–Z). The tile's heading is a link to the whole category.
+function Landing({ catalog, onSearch }) {
+  const [text, setText] = useState('');
   return (
     <div className="landing">
-      <a className="landing__guide" href="#/how-it-works">
-        <strong>First time here?</strong> Read how to request supplies, step by step
-        <span aria-hidden="true"> →</span>
-      </a>
-      <div className="landing__head">
-        <div>
-          <h1 className="page-title">Supplies for partner clinics</h1>
-          <p className="lede">
-            {total.toLocaleString('en-US')} donated medical supplies, ready to request. Pick a category or search above.
-          </p>
-        </div>
-        {long.length > 0 && (
-          <button
-            type="button"
-            className="btn btn--quiet landing__all"
-            onClick={() => setOpen(allOpen ? new Set() : new Set(long.map((c) => c.slug)))}
-          >
-            {allOpen ? 'Collapse all' : 'Expand all'}
+      <h1 className="page-title">Supplies for partner clinics</h1>
+      <p className="lede">Donated medical supplies, free for partner clinics.</p>
+
+      <form
+        className="find"
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (text.trim()) onSearch(text);
+        }}
+      >
+        <label htmlFor="find-input" className="find__label">What do you need?</label>
+        <div className="find__row">
+          <input
+            id="find-input"
+            className="find__input"
+            type="search"
+            autoComplete="off"
+            enterKeyHint="search"
+            placeholder="Type a supply, like gloves or gauze"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <button type="submit" className="btn btn--primary find__btn">
+            <Icon name="search" size={20} /> Search
           </button>
-        )}
-      </div>
+        </div>
+      </form>
+
+      <a className="how" href="#/how-it-works">
+        <span className="visually-hidden">How it works: </span>
+        <ol className="how__steps">
+          <li><span className="how__n" aria-hidden="true">1</span>Find a supply</li>
+          <li><span className="how__n" aria-hidden="true">2</span>Add it to your list</li>
+          <li><span className="how__n" aria-hidden="true">3</span>Send your request</li>
+        </ol>
+        <span className="how__more">How it works<span aria-hidden="true"> →</span></span>
+      </a>
+
+      <h2 className="section-title landing__browse">Or choose a category</h2>
       <div className="landing__grid">
-        {catalog.map((cat) => {
-          const expanded = open.has(cat.slug);
-          const types = expanded ? cat.types : cat.types.slice(0, FIRST);
-          const listId = `cat-types-${cat.slug}`;
-          return (
-            <section key={cat.slug} className="cat" aria-labelledby={`cat-${cat.slug}`}>
-              <h2 className="cat__title" id={`cat-${cat.slug}`}>
-                <a href={`#/c/${cat.slug}`} title={cat.name}>
-                  <span className="cat__art"><ProductIcon type={iconForSubcategory(cat.name)} size={32} /></span>
-                  <span className="cat__name">{cat.name}</span>
-                </a>
-                <span className="cat__count num">{cat.count.toLocaleString('en-US')}</span>
-              </h2>
-              <ul className="cat__types" id={listId}>
-                {types.map((t) => (
-                  <li key={t.slug}>
-                    <a href={`#/c/${cat.slug}/${t.slug}`}>{t.label}</a>{' '}
-                    <span className="cat__n num">{t.items.length}</span>
-                  </li>
-                ))}
-              </ul>
-              {cat.types.length > FIRST && (
-                <button
-                  type="button"
-                  className="linklike cat__toggle"
-                  aria-expanded={expanded}
-                  aria-controls={listId}
-                  onClick={() => toggle(cat.slug)}
-                >
-                  {expanded ? 'Show fewer' : `Show all ${cat.types.length} types`}
-                </button>
-              )}
-            </section>
-          );
-        })}
+        {catalog.map((cat) => (
+          <section key={cat.slug} className="cat" aria-labelledby={`cat-${cat.slug}`}>
+            <h2 className="cat__title" id={`cat-${cat.slug}`}>
+              <a href={`#/c/${cat.slug}`} className="cat__link">
+                <span className="cat__name">{cat.name}</span>
+                <span className="cat__kinds">{kinds(cat.types.length)}</span>
+              </a>
+            </h2>
+            <ul className="cat__types">
+              {cat.types.slice(0, FIRST).map((t) => (
+                <li key={t.slug}><a href={`#/c/${cat.slug}/${t.slug}`}>{t.label}</a></li>
+              ))}
+            </ul>
+            {cat.types.length > FIRST && (
+              <a className="cat__all" href={`#/c/${cat.slug}`}>
+                See all {cat.types.length} kinds in {cat.name}<span aria-hidden="true"> →</span>
+              </a>
+            )}
+          </section>
+        ))}
       </div>
     </div>
   );

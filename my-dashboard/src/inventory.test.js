@@ -675,7 +675,7 @@ describe('my requests: lot lines merge back into supplies', () => {
     expect(g.lines[0].quantity).toBeNull();
   });
 
-  test.each([[1, 1, '1 supply'], [3, 3, '3 supplies'], [1, 2, '1 supply (2 lots)'], [2, 5, '2 supplies (5 lots)']])(
+  test.each([[1, 1, '1 supply'], [3, 3, '3 supplies'], [1, 2, '1 supply (2 batches)'], [2, 5, '2 supplies (5 batches)']])(
     'suppliesLabel(%i, %i) = %p', (supplies, lots, label) => {
       expect(suppliesLabel(supplies, lots)).toBe(label);
     },

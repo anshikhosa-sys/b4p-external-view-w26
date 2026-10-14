@@ -111,14 +111,14 @@ afterEach(() => {
 });
 
 describe('landing', () => {
-  test('lists every category with counts and type links, and no photos', async () => {
+  test('lists every category with how many kinds, type links, and no photos', async () => {
     at('#/');
     const { container } = render(<App />);
     expect(await screen.findByRole('heading', { level: 1, name: 'Supplies for partner clinics' })).toBeInTheDocument();
     const landing = document.querySelector('.landing');
     const syringes = within(landing).getByRole('link', { name: /Needles & Syringes/ });
     expect(syringes).toHaveAttribute('href', '#/c/needles-and-syringes');
-    expect(syringes.closest('h2')).toHaveTextContent('2');
+    expect(syringes.closest('h2')).toHaveTextContent(/Needles & Syringes\s*\d+ kinds? of supplies/);
     expect(within(landing).getByRole('link', { name: /Other supplies/ })).toBeInTheDocument();
     expect(container.querySelectorAll('a[href^="#/c/needles-and-syringes/"]').length).toBeGreaterThan(0);
     expect(document.querySelectorAll('img')).toHaveLength(0);
@@ -235,6 +235,27 @@ describe('search', () => {
 });
 
 describe('request drawer', () => {
+  test('the header says the list is empty, then shows the count', async () => {
+    await renderAt('#/c/gloves', /^Nitrile gloves$/);
+    expect(headerRequest()).toHaveTextContent(/^Your list is empty$/);
+    userEvent.click(addButton('Nitrile gloves'));
+    expect(headerRequest()).toHaveTextContent('Your list (1)');
+  });
+
+  test('Add to list shows "Added" next to the stepper for 3 seconds', async () => {
+    await renderAt('#/c/gloves', /^Nitrile gloves$/);
+    jest.useFakeTimers();
+    try {
+      userEvent.click(addButton('Nitrile gloves'));
+      const row = rowFor('Nitrile gloves');
+      expect(within(row).getByText('Added')).toBeInTheDocument();
+      act(() => { jest.advanceTimersByTime(3000); });
+      expect(within(row).queryByText('Added')).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('Add becomes a stepper capped at stock; header shows the count', async () => {
     await renderAt('#/c/wound-care-and-bandages', /^Gauze pads 4x4$/);
     userEvent.click(addButton('Gauze pads 4x4'));
@@ -242,7 +263,7 @@ describe('request drawer', () => {
     userEvent.click(within(row).getByRole('button', { name: 'One more Gauze pads 4x4' }));
     expect(within(row).getByLabelText('Quantity of Gauze pads 4x4')).toHaveValue('2');
     expect(within(row).getByRole('button', { name: 'All 2 Gauze pads 4x4 are in your request' })).toBeDisabled();
-    expect(within(headerRequest()).getByLabelText('1 supply')).toBeInTheDocument();
+    expect(headerRequest()).toHaveTextContent('Your list (1)');
   });
 
   test('drawer opens from the header, focuses Close, edits, and closes with Escape', async () => {
@@ -284,7 +305,7 @@ describe('request drawer', () => {
     userEvent.click(addButton('Synthetic 10ml Syringe'));
     unmount();
     await renderAt('#/');
-    expect(within(headerRequest()).getByLabelText('1 supply')).toBeInTheDocument();
+    expect(headerRequest()).toHaveTextContent('Your list (1)');
   });
 
   test('a 101st supply is refused with a toast', async () => {
@@ -463,7 +484,7 @@ describe('review and confirmation', () => {
     ]);
     await renderAt('#/c/iv-supplies', /^Saline flush$/);
     const row = rowFor('Saline flush');
-    expect(within(row).getByRole('button', { name: '2 lots' })).toHaveAttribute('aria-expanded', 'false');
+    expect(within(row).getByRole('button', { name: '2 batches' })).toHaveAttribute('aria-expanded', 'false');
     userEvent.click(within(row).getByRole('button', { name: /^Add Saline flush to request$/ }));
     const qty = within(row).getByLabelText('Quantity of Saline flush');
     userEvent.clear(qty);
@@ -506,7 +527,7 @@ describe('review and confirmation', () => {
 
   test('empty review page offers to browse', async () => {
     await renderAt('#/review', null);
-    expect(await screen.findByText('Your list is empty')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Your list is empty' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
   });
 
@@ -710,58 +731,49 @@ describe('round 3: progressive rows, titles', () => {
   });
 });
 
-describe('round 4: collapsible landing cards', () => {
-  const KEY = 'b4p.landing.open.v1';
+describe('landing tiles', () => {
   const many = Array.from({ length: 9 }, (_, i) => supply(200 + i, {
     Name: `Wound thing ${i}`, General: ['gauze pad', 'medical tape', 'bandage roll', 'abdominal pad', 'wound dressing', 'skin protectant', 'tubular bandage', 'casting material', 'adhesive bandage'][i],
   }));
   beforeEach(() => {
     handlers.supplies = () => response(200, [...SUPPLIES, ...many]);
-    window.sessionStorage.clear();
   });
 
   const card = () => document.querySelector('.landing section.cat a[href="#/c/wound-care-and-bandages"]').closest('section');
 
-  test('a card shows 6 types until expanded; the toggle names its panel', async () => {
+  test('a tile is one link to its category, shows 6 kinds, and links to the rest', async () => {
     await renderAt('#/');
     const c = card();
-    const toggle = within(c).getByRole('button', { name: /Show all \d+ types/ });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    const panel = document.getElementById(toggle.getAttribute('aria-controls'));
-    expect(panel).not.toBeNull();
-    expect(within(panel).getAllByRole('link')).toHaveLength(6);
-    userEvent.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(toggle).toHaveTextContent('Show fewer');
-    expect(within(panel).getAllByRole('link').length).toBeGreaterThan(6);
-    expect(JSON.parse(window.sessionStorage.getItem(KEY))).toEqual(['wound-care-and-bandages']);
+    const title = within(c).getByRole('heading', { level: 2 });
+    expect(within(title).getAllByRole('link')).toHaveLength(1);
+    expect(title).toHaveTextContent(/Wound Care & Bandages\s*\d+ kinds of supplies/);
+    expect(within(c.querySelector('ul')).getAllByRole('link')).toHaveLength(6);
+    const all = within(c).getByRole('link', { name: /^See all \d+ kinds in Wound Care & Bandages/ });
+    expect(all).toHaveAttribute('href', '#/c/wound-care-and-bandages');
+    expect(c.querySelector('.cat__n, .cat__count')).toBeNull(); // no small counts next to each kind
   });
 
-  test('cards with 6 or fewer types have no toggle', async () => {
+  test('tiles with 6 or fewer kinds have no "See all" link', async () => {
     await renderAt('#/');
     const gloves = document.querySelector('.landing a[href="#/c/gloves"]').closest('section');
-    expect(within(gloves).queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument();
+    expect(within(gloves).queryByRole('link', { name: /See all/ })).not.toBeInTheDocument();
   });
 
-  test('Expand all / Collapse all', async () => {
+  test('no Expand all, and no category list beside the tiles', async () => {
     await renderAt('#/');
-    userEvent.click(screen.getByRole('button', { name: 'Expand all' }));
-    expect(within(card()).getByRole('button', { name: 'Show fewer' })).toHaveAttribute('aria-expanded', 'true');
-    userEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
-    expect(within(card()).getByRole('button', { name: /Show all/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: /Expand all|Show all/ })).not.toBeInTheDocument();
+    expect(document.querySelector('.shop__tree')).toBeNull();
   });
 
-  test('open cards are remembered for the session', async () => {
-    window.sessionStorage.setItem(KEY, JSON.stringify(['wound-care-and-bandages']));
+  test('the big search box shows results', async () => {
     await renderAt('#/');
-    expect(within(card()).getByRole('button', { name: 'Show fewer' })).toBeInTheDocument();
+    userEvent.type(screen.getByLabelText('What do you need?'), 'glove');
+    userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Results for “glove”' })).toBeInTheDocument();
   });
 
-  test.each(['{bad', '"x"', '[1,2]', '{"a":1}', JSON.stringify(['__proto__', 'constructor', 'not-a-category'])])(
-    'invalid saved state %s is ignored', async (raw) => {
-      window.sessionStorage.setItem(KEY, raw);
-      await renderAt('#/');
-      expect(within(card()).getByRole('button', { name: /Show all/ })).toHaveAttribute('aria-expanded', 'false');
-    },
-  );
+  test('how it works links to the guide', async () => {
+    await renderAt('#/');
+    expect(screen.getByRole('link', { name: /How it works: .*Find a supply.*Send your request/ })).toHaveAttribute('href', '#/how-it-works');
+  });
 });

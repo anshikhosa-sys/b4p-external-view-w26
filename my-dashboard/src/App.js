@@ -11,6 +11,7 @@ import Icon from './components/Icons';
 import ItemDetail from './components/ItemDetail';
 import Landing from './components/Landing';
 import MyRequests from './components/MyRequests';
+import Progress from './components/Progress';
 import RequestSlip from './components/RequestSlip';
 import { ForgotPassword, SignIn, Welcome } from './components/SignIn';
 import SearchResults from './components/SearchResults';
@@ -284,7 +285,7 @@ export default function App() {
       }));
     });
     if (payload.length > MAX_LINES) {
-      throw new ApiError(`This request covers ${payload.length} separate lots, and one request can include ${MAX_LINES}. Remove a few supplies and send them in a second request.`);
+      throw new ApiError(`This request covers ${payload.length} separate batches, and one request can include ${MAX_LINES}. Remove a few supplies and send them in a second request.`);
     }
     // One id per distinct request: a retry after a timeout resends the same id, so the server
     // returns the first request instead of creating a duplicate.
@@ -423,12 +424,14 @@ export default function App() {
         </EmptyState>
       );
     } else {
-      page = <Landing catalog={catalog} total={catalogTotal} />;
+      page = <Landing catalog={catalog} onSearch={onQuery} />;
     }
 
+    // The home page's category tiles replace the category list, so it shows everywhere else.
+    const showTree = wide && inventory.status === 'done' && (base.view !== 'catalog' || !!searchView);
     main = (
-      <div className="shop">
-        {wide && inventory.status === 'done' && (
+      <div className={`shop${showTree ? '' : ' shop--full'}`}>
+        {showTree && (
           <aside className="shop__tree">
             <CategoryTree
               catalog={catalog}
@@ -453,6 +456,7 @@ export default function App() {
           {inventory.status === 'done' && !inventory.fresh && !inventory.error && slow && (
             <p className="stale" role="status">Showing the list saved on this device while the server wakes up.</p>
           )}
+          {inventory.status === 'done' && <Progress step={1} />}
           {page}
         </div>
       </div>
@@ -487,8 +491,8 @@ export default function App() {
         {main}
       </main>
       <footer className="footer">
-        <p>
-          Can’t find what you need? <a href={`mailto:${CONTACT_EMAIL}`}>Email us at {CONTACT_EMAIL}</a>
+        <p className="footer__help">
+          Need help? Email <a className="footer__email" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
         </p>
       </footer>
 

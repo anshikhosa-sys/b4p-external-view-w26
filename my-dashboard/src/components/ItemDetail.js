@@ -11,7 +11,7 @@ function notesOf(product) {
 }
 
 function expiryText(item) {
-  if (!item.expiry) return 'No expiration date listed';
+  if (!item.expiry) return 'No use-by date listed';
   const days = daysUntil(item.expiry);
   const date = formatExpiry(item.expiry);
   if (days < 0) return `Expired on ${date}`;
@@ -52,7 +52,7 @@ export default function ItemDetail({ item, onHold, quantity, onQuantity, onClose
           <dl className="facts">
             <div><dt>Type</dt><dd>{item.general || 'Not listed'}</dd></div>
             <div><dt>Maker</dt><dd>{item.manufacturer || 'Not listed'}</dd></div>
-            <div><dt>{item.lots.length > 1 ? 'Next to expire' : 'Expires'}</dt><dd>{expiryText(item)}</dd></div>
+            <div><dt>{item.lots.length > 1 ? 'Earliest use by' : 'Use by'}</dt><dd>{expiryText(item)}</dd></div>
             <div><dt>Warehouse category</dt><dd>{item.category || 'Not listed'}</dd></div>
           </dl>
           <h3 className="detail__h3">
@@ -61,9 +61,9 @@ export default function ItemDetail({ item, onHold, quantity, onQuantity, onClose
           <table className="lots lots--detail">
             <thead>
               <tr>
-                <th scope="col">Lot</th>
-                <th scope="col">Location</th>
-                <th scope="col">Expires</th>
+                <th scope="col">Batch</th>
+                <th scope="col">Box</th>
+                <th scope="col">Use by</th>
                 <th scope="col" className="lots__qty">In stock</th>
               </tr>
             </thead>
@@ -71,7 +71,7 @@ export default function ItemDetail({ item, onHold, quantity, onQuantity, onClose
               {item.lots.map((l) => (
                 <tr key={l.id} className={l.expiryState === 'expired' ? 'lots__expired' : undefined}>
                   <td className="num">{l.lot || '–'}</td>
-                  <td className="num">{[l.pallet && `Pallet ${l.pallet}`, l.box && `box ${l.box}`].filter(Boolean).join(', ') || '–'}</td>
+                  <td className="num">{l.box ? `Box ${l.box}` : '–'}</td>
                   <td className="num">{l.expiry ? formatExpiry(l.expiry) : '–'}{l.expiryState === 'expired' && ' (expired)'}</td>
                   <td className="lots__qty num">{l.quantity == null ? '–' : l.quantity.toLocaleString('en-US')}</td>
                 </tr>

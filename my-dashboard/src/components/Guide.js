@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Icon from './Icons';
 
 // "How to request supplies": a step-by-step guide for clinic staff.
@@ -26,14 +26,26 @@ function Picture({ caption, children }) {
   );
 }
 
-function Step({ id, n, title, children }) {
+// Each section's title is always visible; its details open and close.
+function Step({ id, n, title, open, onToggle, children }) {
+  const bodyId = `guide-${id}-body`;
   return (
     <section className="guide__step" id={`guide-${id}`} aria-labelledby={`guide-${id}-title`}>
       <h2 id={`guide-${id}-title`} className="guide__step-title">
         {n && <span className="guide__n">{n}</span>}
         {title}
       </h2>
-      {children}
+      <button
+        type="button"
+        className="guide__toggle linklike"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => onToggle(id)}
+        aria-label={`${open ? 'Hide' : 'Show'} details: ${title}`}
+      >
+        {open ? 'Hide details' : 'Show details'}
+      </button>
+      <div className="guide__step-body" id={bodyId} hidden={!open}>{children}</div>
     </section>
   );
 }
@@ -41,14 +53,31 @@ function Step({ id, n, title, children }) {
 export default function Guide({ contactEmail, signedIn }) {
   const titleRef = useRef(null);
   useEffect(() => titleRef.current && titleRef.current.focus(), []);
-  const jump = (id) => (e) => {
-    e.preventDefault();
-    const el = document.getElementById(`guide-${id}`);
+  // Only the first section starts open; "In short" above is the main content.
+  const [open, setOpen] = useState(() => new Set([SECTIONS[0][0]]));
+  const toggle = (id) => setOpen((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+  const step = (id) => ({ id, open: open.has(id), onToggle: toggle });
+  const [jumpTo, setJumpTo] = useState(null);
+  // A contents link opens its section, then moves there once it has rendered open.
+  useEffect(() => {
+    if (!jumpTo) return;
+    const el = document.getElementById(`guide-${jumpTo}`);
     if (el) {
       el.scrollIntoView({ block: 'start' });
       el.querySelector('h2').setAttribute('tabindex', '-1');
       el.querySelector('h2').focus({ preventScroll: true });
     }
+    setJumpTo(null);
+  }, [jumpTo]);
+  const jump = (id) => (e) => {
+    e.preventDefault();
+    setOpen((prev) => new Set(prev).add(id));
+    setJumpTo(id);
   };
 
   return (
@@ -65,7 +94,7 @@ export default function Guide({ contactEmail, signedIn }) {
           <p className="guide__short-title" id="guide-short-title">In short</p>
           <ol>
             <li><strong>Sign in</strong> with the email Blueprints invited.</li>
-            <li><strong>Add</strong> the supplies you need to your list.</li>
+            <li>Click <strong>Add to list</strong> next to each supply you need.</li>
             <li>Click <strong>Your list</strong> (top right), then <strong>Review and send</strong>.</li>
             <li>Click <strong>Send request</strong>. We email you as it moves along.</li>
           </ol>
@@ -88,7 +117,7 @@ export default function Guide({ contactEmail, signedIn }) {
         </nav>
 
         <div className="guide__body">
-          <Step id="before" title="Before you start">
+          <Step {...step('before')} title="Before you start">
             <p>You will need:</p>
             <ul className="guide__list">
               <li><strong>The invite email from Blueprints.</strong> Each partner clinic gets one, with a link to set up your account.</li>
@@ -105,7 +134,7 @@ export default function Guide({ contactEmail, signedIn }) {
             </p>
           </Step>
 
-          <Step id="account" n="1" title="Set up your account (first time only)">
+          <Step {...step('account')} n="1" title="Set up your account (first time only)">
             <ol className="guide__steps">
               <li>Open the invite email from Blueprints and click the link in it.</li>
               <li>A page opens showing your clinic’s name and your email. <strong>Check that both are right.</strong> If not, stop and email us.</li>
@@ -134,7 +163,7 @@ export default function Guide({ contactEmail, signedIn }) {
             <p>The invite link works for 7 days. If it has expired, the page will tell you, and you can ask us for a new one.</p>
           </Step>
 
-          <Step id="signin" n="2" title="Sign in">
+          <Step {...step('signin')} n="2" title="Sign in">
             <p>
               You can look at the supply list without signing in. You need to sign in to send a request
               and to see your past requests.
@@ -154,7 +183,7 @@ export default function Guide({ contactEmail, signedIn }) {
             </p>
           </Step>
 
-          <Step id="find" n="3" title="Find a supply">
+          <Step {...step('find')} n="3" title="Find a supply">
             <p>There are two ways to find what you need:</p>
             <ul className="guide__list">
               <li>
@@ -170,20 +199,20 @@ export default function Guide({ contactEmail, signedIn }) {
               <div className="mini-search"><Icon name="search" size={18} /> gloves</div>
             </Picture>
             <p>
-              Each supply shows its name, the maker, how many are in stock and when it expires. Click a supply’s
-              name to see more detail, including each box or lot we have.
+              Each supply shows its name, the maker, how many are in stock and its use-by date. Click a supply’s
+              name to see more detail, including each batch we have.
             </p>
           </Step>
 
-          <Step id="amount" n="4" title="Choose how many">
+          <Step {...step('amount')} n="4" title="Choose how many">
             <ol className="guide__steps">
-              <li>Next to the supply, click <strong>Add</strong>. One is added to your request.</li>
+              <li>Next to the supply, click <strong>Add to list</strong>. One is added to your list.</li>
               <li>Use <strong>+</strong> and <strong>−</strong> to change the amount, or click the number and type the amount you need.</li>
               <li>Keep going: add every supply your clinic needs before sending.</li>
             </ol>
-            <Picture caption="Before and after clicking Add.">
+            <Picture caption="Before and after clicking Add to list.">
               <div className="mini-row">
-                <span className="btn btn--secondary btn--sm">Add</span>
+                <span className="btn btn--secondary btn--sm">Add to list</span>
                 <span className="mini-arrow">→</span>
                 <span className="mini-stepper"><span>−</span><b>12</b><span>+</span></span>
               </div>
@@ -195,18 +224,18 @@ export default function Guide({ contactEmail, signedIn }) {
             </ul>
           </Step>
 
-          <Step id="check" n="5" title="Check your request">
+          <Step {...step('check')} n="5" title="Check your request">
             <p>
               The <strong>Your list</strong> button at the top right shows how many supplies you’ve added. Click it
               to see them.
             </p>
             <Picture caption="The number is how many different supplies are on your request.">
-              <span className="header__slip mini-slip"><Icon name="slip" size={18} /> Your list <span className="header__count">3</span></span>
+              <span className="header__slip mini-slip"><Icon name="slip" size={18} /> Your list (3)</span>
             </Picture>
             <p>Read through the list and change any amounts. When it looks right, click <strong>Review and send</strong>.</p>
           </Step>
 
-          <Step id="send" n="6" title="Send it">
+          <Step {...step('send')} n="6" title="Send it">
             <ol className="guide__steps">
               <li>On the <strong>Review your request</strong> page, check the list one last time.</li>
               <li>Check that <strong>Sending as</strong> shows your clinic and your email. Updates are sent to that email.</li>
@@ -223,7 +252,7 @@ export default function Guide({ contactEmail, signedIn }) {
             </p>
           </Step>
 
-          <Step id="follow" n="7" title="Follow your request">
+          <Step {...step('follow')} n="7" title="Follow your request">
             <p>
               Open <strong>My requests</strong> from the menu at the top right. Each request shows where it is.
               We also email you each time it moves to the next step.
@@ -241,7 +270,7 @@ export default function Guide({ contactEmail, signedIn }) {
             </p>
           </Step>
 
-          <Step id="labels" title="What the labels mean">
+          <Step {...step('labels')} title="What the labels mean">
             <dl className="guide__labels">
               <div><dt><span className="badge badge--low">Low stock</span></dt><dd>Only a few left. Ask soon if you need it.</dd></div>
               <div><dt><span className="badge badge--soon">Expires soon</span></dt><dd>Use-by date is close. Only ask if you can use it in time.</dd></div>
@@ -250,7 +279,7 @@ export default function Guide({ contactEmail, signedIn }) {
             </dl>
           </Step>
 
-          <Step id="help" title="Questions and problems">
+          <Step {...step('help')} title="Questions and problems">
             <dl className="guide__faq">
               <div>
                 <dt>I forgot my password.</dt>

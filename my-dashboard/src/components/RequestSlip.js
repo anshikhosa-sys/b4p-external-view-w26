@@ -1,5 +1,6 @@
 import { MAX_LINES } from '../useCart';
 import Icon from './Icons';
+import Progress from './Progress';
 import QuantityStepper from './QuantityStepper';
 
 const today = () => new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -18,6 +19,7 @@ export default function RequestSlip({ lines, totalUnits, org, notice, onDismissN
           </button>
         )}
       </div>
+      <Progress step={2} />
       <div className="slip__from">
         <span className="slip__label">From</span>
         <span className={org.name ? 'slip__org' : 'slip__org slip__org--blank'}>
@@ -34,7 +36,7 @@ export default function RequestSlip({ lines, totalUnits, org, notice, onDismissN
 
       {empty ? (
         <p className="slip__empty">
-          Nothing here yet. Choose <strong>Add</strong> next to any supply and it will appear here.
+          Nothing here yet. Choose <strong>Add to list</strong> next to any supply and it will appear here.
         </p>
       ) : (
         <ol className="slip__lines">
@@ -47,7 +49,7 @@ export default function RequestSlip({ lines, totalUnits, org, notice, onDismissN
                 </button>
                 <span className="slip__avail num">
                   {line.max != null ? `${line.max.toLocaleString('en-US')} in stock` : 'Quantity not listed'}
-                  {line.lotCount > 1 ? `, from ${line.lotCount} lots` : ''}
+                  {line.lotCount > 1 ? `, from ${line.lotCount} batches` : ''}
                 </span>
               </div>
               <div className="slip__qty">

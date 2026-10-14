@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import Icon from './Icons';
+import Progress from './Progress';
 import { WakingNotice } from './States';
 
 export const EMAIL_RE = /^[^@\s<>"]+@[^@\s<>"]+\.[^@\s<>"]+$/;
@@ -62,10 +63,37 @@ export default function CheckoutForm({ lines, totalUnits, org, account, onSignOu
       <button type="button" className="back" onClick={onBack}>
         <Icon name="back" size={18} /> Back to supplies
       </button>
+      <Progress step={3} />
       <h1 className="page-title">Review your request</h1>
-      <div className="checkout__grid">
+      <div className="checkout__stack">
+        <section className="checkout__summary" aria-labelledby="summary-title">
+          <div className="checkout__summary-head">
+            <h2 id="summary-title" className="section-title">Supplies requested</h2>
+            <button type="button" className="linklike" onClick={onBack}>Change</button>
+          </div>
+          <ol className="summary">
+            {lines.map((l) => (
+              <li key={l.id}>
+                <span className="summary__name">
+                  {l.name}
+                  {l.lotCount > 1 && <span className="summary__lots">From {l.lotCount} batches, soonest use-by date first</span>}
+                </span>
+                <span className="summary__qty num">{l.quantity.toLocaleString('en-US')}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="summary__total">
+            Total <span className="num">{totalUnits.toLocaleString('en-US')}</span> {totalUnits === 1 ? 'unit' : 'units'}
+          </p>
+          {reviewCount > 0 && (
+            <p className="hint">
+              Our team checks {reviewCount === 1 ? 'one of these supplies' : `${reviewCount} of these supplies`} by hand before shipping, so approval may take a little longer.
+            </p>
+          )}
+        </section>
+
         <form className="checkout__form" onSubmit={handleSubmit} noValidate>
-          <h2 className="section-title">Your clinic</h2>
+          <h2 className="section-title">Sending as</h2>
           {account ? (
             <div className="sending-as">
               <dl>
@@ -123,36 +151,11 @@ export default function CheckoutForm({ lines, totalUnits, org, account, onSignOu
           )}
           {sending && slow && <WakingNotice />}
 
-          <button type="submit" className="btn btn--primary btn--block btn--lg" disabled={sending} aria-disabled={sending}>
+          <button type="submit" className="btn btn--primary btn--block btn--send" disabled={sending} aria-disabled={sending} aria-describedby="send-note">
             {sending ? 'Sending request…' : 'Send request'}
           </button>
+          <p className="checkout__note" id="send-note">Nothing ships until our team reviews it. We’ll email you.</p>
         </form>
-
-        <section className="checkout__summary" aria-labelledby="summary-title">
-          <div className="checkout__summary-head">
-            <h2 id="summary-title" className="section-title">Supplies requested</h2>
-            <button type="button" className="linklike" onClick={onBack}>Change</button>
-          </div>
-          <ol className="summary">
-            {lines.map((l) => (
-              <li key={l.id}>
-                <span className="summary__name">
-                  {l.name}
-                  {l.lotCount > 1 && <span className="summary__lots">From {l.lotCount} batches, soonest to expire first</span>}
-                </span>
-                <span className="summary__qty num">{l.quantity.toLocaleString('en-US')}</span>
-              </li>
-            ))}
-          </ol>
-          <p className="summary__total">
-            Total <span className="num">{totalUnits.toLocaleString('en-US')}</span> {totalUnits === 1 ? 'unit' : 'units'}
-          </p>
-          {reviewCount > 0 && (
-            <p className="hint">
-              Our team checks {reviewCount === 1 ? 'one of these supplies' : `${reviewCount} of these supplies`} by hand before shipping, so approval may take a little longer.
-            </p>
-          )}
-        </section>
       </div>
     </div>
   );

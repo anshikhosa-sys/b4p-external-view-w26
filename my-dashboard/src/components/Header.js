@@ -58,11 +58,19 @@ export default function Header({ view, lineCount, onOpenSlip, onOpenCategories, 
           )}
         </nav>
         {account && <AccountMenu account={account} onSignOut={onSignOut} />}
-        {!authPage && <button type="button" className="header__slip" onClick={onOpenSlip}>
-          <Icon name="slip" size={18} />
-          <span className="header__slip-label">Your list</span>
-          <span className="header__count num" aria-label={`${lineCount} ${lineCount === 1 ? 'supply' : 'supplies'}`}>{lineCount}</span>
-        </button>}
+        {!authPage && (lineCount ? (
+          <button type="button" className="header__slip" onClick={onOpenSlip}>
+            <Icon name="slip" size={18} />
+            <span className="header__slip-label">Your list</span>{' '}
+            <span className="num">({lineCount})</span>
+            <span className="visually-hidden"> {lineCount === 1 ? 'supply' : 'supplies'}</span>
+          </button>
+        ) : (
+          // Still opens the (empty) list, but quietly: there is nothing to act on yet.
+          <button type="button" className="header__slip header__slip--empty" onClick={onOpenSlip}>
+            Your list is empty
+          </button>
+        ))}
       </div>
     </header>
   );
