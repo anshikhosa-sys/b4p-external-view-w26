@@ -2725,55 +2725,6 @@ h3 {
   margin-top: 24px;
 }
 
-.guide__layout {
-  display: grid;
-  gap: 32px;
-  padding-top: 32px;
-  border-top: 1px solid var(--line);
-}
-
-@media (min-width: 1000px) {
-  .guide__layout {
-    grid-template-columns: 220px minmax(0, 720px);
-    gap: 64px;
-  }
-
-  .guide__toc {
-    position: sticky;
-    top: calc(var(--header-h) + 24px);
-    align-self: start;
-  }
-}
-
-.guide__toc-title {
-  margin-bottom: 8px;
-  color: var(--heading);
-  font-weight: 700;
-}
-
-.guide__toc ol {
-  display: grid;
-  gap: 2px;
-  font-size: var(--text-sm);
-}
-
-.guide__toc a {
-  display: block;
-  padding: 4px 0;
-}
-
-@media (max-width: 999px) {
-  .guide__toc {
-    padding: 16px;
-    background: var(--tint);
-  }
-
-  .guide__toc ol {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 16px;
-  }
-}
-
 .guide__body {
   font-size: 17px;
   line-height: 1.6;
@@ -2829,35 +2780,6 @@ h3 {
   margin-top: 8px;
   padding-left: 20px;
   list-style: disc;
-}
-
-.guide__steps {
-  display: grid;
-  gap: 12px;
-  counter-reset: gstep;
-}
-
-.guide__steps li {
-  position: relative;
-  padding-left: 40px;
-  counter-increment: gstep;
-}
-
-.guide__steps li::before {
-  content: counter(gstep);
-  position: absolute;
-  left: 0;
-  top: 1px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1.5px solid var(--navy);
-  border-radius: 50%;
-  color: var(--heading);
-  font-size: 15px;
-  font-weight: 700;
 }
 
 .guide__note,
@@ -3029,6 +2951,78 @@ h3 {
   font-weight: 700;
 }
 
+.guide__cards {
+  display: grid;
+  gap: 24px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+
+@media (min-width: 900px) {
+  .guide__cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.guide__card {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  font-size: 17px;
+  line-height: 1.55;
+}
+
+.guide__card .guide__step-title {
+  font-size: 22px;
+}
+
+.guide__card .guide__shot {
+  margin: 16px 0 0;
+}
+
+.guide__questions {
+  max-width: 760px;
+  margin: 48px 0 32px;
+}
+
+.guide__questions-title {
+  margin-bottom: 12px;
+  color: var(--heading);
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.guide__q {
+  border-bottom: 1px solid var(--line);
+}
+
+.guide__q:first-of-type {
+  border-top: 1px solid var(--line);
+}
+
+.guide__q > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--target);
+  padding: 12px 0;
+  color: var(--heading);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.guide__a {
+  padding: 0 0 20px;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.guide__a > * + * {
+  margin-top: 12px;
+}
+
 .guide__end {
   display: flex;
   flex-wrap: wrap;
@@ -3110,33 +3104,6 @@ h3 {
   margin-bottom: 12px;
 }
 
-.guide__short {
-  margin-top: 24px;
-  padding: 20px 24px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #fff;
-}
-
-.guide__short-title {
-  margin-bottom: 8px;
-  color: var(--heading);
-  font-weight: 800;
-}
-
-.guide__short ol {
-  display: grid;
-  gap: 6px;
-  padding-left: 22px;
-  list-style: decimal;
-}
-
-.guide__short ol + p {
-  margin-top: 12px;
-  color: var(--ink-2);
-  font-size: var(--text-sm);
-}
-
 /* On phones the account button says "Account", not just an initial. */
 .acct__label {
   display: none;
@@ -3166,7 +3133,6 @@ h3 {
 /* Link lists: every row is a full 44px target. */
 .tree__link,
 .cat__types a,
-.guide__toc a,
 .acct__item {
   display: flex;
   align-items: center;
@@ -3664,11 +3630,6 @@ h3 {
   .acct__label {
     display: none;
   }
-}
-
-/* A list that continues after a picture keeps counting (<ol start="2">). */
-.guide__steps[start='2'] {
-  counter-reset: gstep 1;
 }
 
 /* Header order: title far left; How it works, My requests, Email for help, Your list;

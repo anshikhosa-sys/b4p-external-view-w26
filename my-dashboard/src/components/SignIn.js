@@ -92,7 +92,7 @@ function AuthFrame({ title, lede, children, contactEmail, onFill }) {
   useEffect(() => titleRef.current && titleRef.current.focus(), []);
   return (
     <div className="auth">
-      <a className="back" href="#/"><Icon name="back" size={18} /> Back to supplies</a>
+      <a className="back" href="#/supplies"><Icon name="back" size={18} /> Back to supplies</a>
       <section className="auth__card">
         <h1 className="page-title" tabIndex={-1} ref={titleRef}>{title}</h1>
         {lede && <p className="lede">{lede}</p>}

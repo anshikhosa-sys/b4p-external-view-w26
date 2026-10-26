@@ -154,17 +154,18 @@ describe('apiRequest', () => {
 
 describe('parseHash', () => {
   test.each([
-    ['', { view: 'catalog' }],
-    ['#/', { view: 'catalog' }],
+    ['', { view: 'home' }],
+    ['#/', { view: 'home' }],
+    ['#/supplies', { view: 'catalog' }],
     ['#/requests', { view: 'requests' }],
     ['#/checkout', { view: 'checkout' }],
     ['#/slip', { view: 'slip' }],
     ['#/item/42', { view: 'item', id: 42 }],
-    ['#/item/abc', { view: 'catalog' }],
-    ['#/item/', { view: 'catalog' }],
+    ['#/item/abc', { view: 'home' }],
+    ['#/item/', { view: 'home' }],
     ['#/sent/REQ-1760000000-123', { view: 'sent', id: 'REQ-1760000000-123' }],
-    ['#/sent/', { view: 'catalog' }],
-    ['#/nope', { view: 'catalog' }],
+    ['#/sent/', { view: 'home' }],
+    ['#/nope', { view: 'home' }],
     ['#requests', { view: 'requests' }],
   ])('%s', (hash, route) => {
     expect(parseHash(hash)).toEqual(route);

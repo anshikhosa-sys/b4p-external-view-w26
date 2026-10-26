@@ -2,14 +2,15 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Guide from './Guide';
 
-test('the guide lists every step and how to reach our team', () => {
+test('the guide is four short steps and a way to the supplies', () => {
   render(<Guide contactEmail="contact@b4pglobal.org" signedIn={false} />);
   expect(screen.getByRole('heading', { level: 1, name: 'How to request supplies' })).toHaveFocus();
-  for (const title of ['Set up your account', 'Sign in', 'Find a supply', 'Choose how many', 'Check your list', 'Send it', 'Follow your request']) {
-    expect(screen.getByRole('heading', { level: 2, name: new RegExp(title) })).toBeInTheDocument();
-  }
-  expect(screen.getAllByRole('link', { name: 'contact@b4pglobal.org' }).length).toBeGreaterThan(0);
-  expect(screen.getAllByRole('link', { name: 'Start a request' })[0]).toHaveAttribute('href', '#/');
+  const steps = ['Sign in', 'Add what you need', 'Review and send', 'Follow your request'];
+  steps.forEach((title, i) => {
+    expect(screen.getByRole('heading', { level: 2, name: `Step ${i + 1}: ${title}` })).toBeInTheDocument();
+  });
+  for (const link of screen.getAllByRole('link', { name: 'Browse supplies' })) expect(link).toHaveAttribute('href', '#/supplies');
+  expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '#/signin');
 });
 
 test('signed-in clinics don’t see the Sign in button', () => {
@@ -17,11 +18,18 @@ test('signed-in clinics don’t see the Sign in button', () => {
   expect(screen.queryByRole('link', { name: 'Sign in' })).not.toBeInTheDocument();
 });
 
-test('every step has a screenshot with a description', () => {
+test('each step has one described screenshot; the questions stay folded until opened', () => {
   render(<Guide contactEmail="contact@b4pglobal.org" signedIn={false} />);
-  const shots = screen.getAllByRole('img');
-  expect(shots.length).toBeGreaterThanOrEqual(10);
-  for (const img of shots) expect(img.getAttribute('alt').length).toBeGreaterThan(30);
-  expect(screen.getByRole('img', { name: /red box around the blue Send request button/ })).toBeInTheDocument();
-  expect(screen.getByText('In short')).toBeInTheDocument();
+  const cards = screen.getAllByRole('listitem').filter((li) => li.classList.contains('guide__card'));
+  expect(cards).toHaveLength(4);
+  for (const card of cards) {
+    const shots = card.querySelectorAll('img');
+    expect(shots).toHaveLength(1);
+    expect(shots[0].getAttribute('alt').length).toBeGreaterThan(30);
+  }
+  const question = screen.getByText('Something else is wrong.').closest('details');
+  expect(question).not.toHaveAttribute('open');
+  userEvent.click(screen.getByText('Something else is wrong.'));
+  expect(question).toHaveAttribute('open');
+  expect(screen.getAllByRole('link', { name: 'contact@b4pglobal.org' }).length).toBeGreaterThan(0);
 });

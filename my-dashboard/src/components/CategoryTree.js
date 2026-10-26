@@ -3,7 +3,7 @@ export default function CategoryTree({ catalog, activeSlug, total, onNavigate })
   return (
     <nav className="tree" aria-label="Categories">
       <a
-        href="#/"
+        href="#/supplies"
         className="tree__link tree__link--all"
         aria-current={!activeSlug ? 'page' : undefined}
         onClick={onNavigate}

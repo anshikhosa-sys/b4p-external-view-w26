@@ -126,7 +126,7 @@ function useInventory() {
 }
 
 export default function App() {
-  const route = useHashRoute();
+  const hashRoute = useHashRoute();
   const wide = useMediaQuery('(min-width: 1280px)'); // category tree shown
   const { inventory, slow, refreshing, holds, reload, reloadHolds } = useInventory();
   const cart = useCart();
@@ -138,6 +138,8 @@ export default function App() {
   const { signedIn, signOut } = auth;
   // Signed in: the clinic comes from the account, not from what was typed.
   const org = useMemo(() => (account ? { name: account.org, email: account.email } : savedOrg), [account, savedOrg]);
+  // Home is the guide for visitors; signed-in clinics go straight to the supplies.
+  const route = hashRoute.view === 'home' ? { view: account ? 'catalog' : 'guide', home: true } : hashRoute;
 
   const [rawQuery, setRawQuery] = useState('');
   // Typing stays instant; results follow at lower priority.
@@ -167,7 +169,7 @@ export default function App() {
     setRawQuery(value);
     if (value.trim() && !inCatalogRef.current) {
       keepQuery.current = true;
-      navigate('/');
+      navigate('/supplies');
     }
   }, []);
   const basePath = routePath(base);
@@ -318,7 +320,7 @@ export default function App() {
   const onSignOut = () => {
     signOut();
     setToast({ message: 'You’ve signed out. Your list is still saved on this device.' });
-    if (base.view === 'requests' || base.view === 'checkout') navigate('/');
+    if (base.view === 'requests' || base.view === 'checkout') navigate('/supplies');
   };
 
   const openItem = useCallback((id) => navigate(`/item/${id}`), []);
@@ -327,7 +329,7 @@ export default function App() {
   let main;
   if (base.view === 'signin') {
     main = account ? (
-      <EmptyState level={1} title={`You’re signed in as ${account.org}`} action={<a className="btn btn--primary" href="#/">Browse supplies</a>}>
+      <EmptyState level={1} title={`You’re signed in as ${account.org}`} action={<a className="btn btn--primary" href="#/supplies">Browse supplies</a>}>
         Signed in with {account.email}.
       </EmptyState>
     ) : <SignIn next={base.next} onSignedIn={onSignedIn(base.next)} contactEmail={CONTACT_EMAIL} />;
@@ -352,17 +354,17 @@ export default function App() {
         account={account}
         onEmailChange={(email) => setOrg({ ...org, email })}
         highlightId={lastSent && lastSent.id}
-        onBrowse={() => navigate('/')}
+        onBrowse={() => navigate('/supplies')}
       />
     );
   } else if (base.view === 'checkout') {
     main = cart.lines.length ? (
-      <CheckoutForm lines={cart.lines} totalUnits={cart.totalUnits} org={org} account={account} onSignOut={onSignOut} onSubmit={handleSubmit} onBack={() => closeTo('/')} />
+      <CheckoutForm lines={cart.lines} totalUnits={cart.totalUnits} org={org} account={account} onSignOut={onSignOut} onSubmit={handleSubmit} onBack={() => closeTo('/supplies')} />
     ) : (
       <EmptyState
         level={1}
         title="Your list is empty"
-        action={<button type="button" className="btn btn--primary" onClick={() => navigate('/')}>Browse supplies</button>}
+        action={<button type="button" className="btn btn--primary" onClick={() => navigate('/supplies')}>Browse supplies</button>}
       >
         Add supplies from the list, then come back here to submit your request.
       </EmptyState>
@@ -372,7 +374,7 @@ export default function App() {
       <Confirmation
         requestId={base.id}
         sent={lastSent && lastSent.id === base.id ? lastSent : null}
-        onBrowse={() => navigate('/')}
+        onBrowse={() => navigate('/supplies')}
         onViewRequests={() => navigate('/requests')}
       />
     );
@@ -415,7 +417,7 @@ export default function App() {
       page = (
         <EmptyState
           title="This category isn’t in the list anymore"
-          action={<a className="btn btn--secondary" href="#/">See all categories</a>}
+          action={<a className="btn btn--secondary" href="#/supplies">See all categories</a>}
         />
       );
     } else if (catalogTotal === 0) {
@@ -456,8 +458,8 @@ export default function App() {
           {inventory.status === 'done' && !inventory.fresh && !inventory.error && slow && (
             <p className="stale" role="status">Showing the list saved on this device while the server wakes up.</p>
           )}
-          {/* Home page only: the guide link comes first, above everything else. */}
-          {inventory.status === 'done' && base.view === 'catalog' && !searchView && (
+          {/* Supplies home only, for visitors: the guide link comes first, even while the list loads. */}
+          {base.view === 'catalog' && !account && !searchView && (
             <a className="landing__guide" href="#/how-it-works">
               <strong>First time here?</strong> Read how to request supplies, step by step
               <span aria-hidden="true"> →</span>
@@ -572,6 +574,7 @@ export default function App() {
 }
 
 function routePath(r) {
+  if (r.home) return '/';
   if (r.view === 'category') return `/c/${r.slug}${r.type ? `/${r.type}` : ''}`;
   if (r.view === 'requests') return '/requests';
   if (r.view === 'signin') return `/signin${r.next ? `/${r.next}` : ''}`;
@@ -580,5 +583,5 @@ function routePath(r) {
   if (r.view === 'welcome') return `/welcome/${r.token}`;
   if (r.view === 'checkout') return '/review';
   if (r.view === 'sent') return `/sent/${r.id}`;
-  return '/';
+  return '/supplies';
 }

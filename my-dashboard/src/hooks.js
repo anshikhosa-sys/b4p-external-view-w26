@@ -27,7 +27,7 @@ export function useMediaQuery(query) {
   return matches;
 }
 
-// Routes: #/  #/c/<category>[/<type>]  #/requests  #/item/<row>  #/slip  #/review  #/sent/<id>
+// Routes: #/ (home: the guide, or the supplies once signed in)  #/supplies  #/c/<category>[/<type>]  #/requests  #/item/<row>  #/slip  #/review  #/sent/<id>
 //         #/signin[/review|/requests]  #/forgot  #/welcome/<invite token>  #/how-it-works
 // Only real request IDs render on the "submitted" page (no spoofed text via links).
 const REQUEST_ID_RE = /^REQ-\d+-[0-9a-z]+$/i;
@@ -39,6 +39,7 @@ export function parseHash(hash) {
   if (view === 'signin') return { view: 'signin', next: ['review', 'requests'].includes(param) ? param : null };
   if (view === 'forgot') return { view: 'forgot' };
   if (view === 'how-it-works') return { view: 'guide' };
+  if (view === 'supplies') return { view: 'catalog' };
   if (view === 'welcome' && /^[A-Za-z0-9_-]{1,100}$/.test(param || '')) return { view: 'welcome', token: param };
   if (view === 'review' || view === 'checkout') return { view: 'checkout' };
   if (view === 'slip') return { view: 'slip' };
@@ -47,7 +48,7 @@ export function parseHash(hash) {
   if (view === 'c' && SLUG_RE.test(param || '')) {
     return { view: 'category', slug: param, type: SLUG_RE.test(extra || '') ? extra : null };
   }
-  return { view: 'catalog' };
+  return { view: 'home' };
 }
 
 const ROUTE_EVENT = 'b4p:route';
