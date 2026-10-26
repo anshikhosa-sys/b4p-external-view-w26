@@ -4,6 +4,7 @@ import { iconFor, ProductIconSprite, typeLabelFor } from './catalogIcons';
 import CategoryPage from './components/CategoryPage';
 import CategoryTree from './components/CategoryTree';
 import CheckoutForm from './components/CheckoutForm';
+import DataSource, { showDataSource } from './components/DataSource';
 import Confirmation from './components/Confirmation';
 import Dialog from './components/Dialog';
 import Header from './components/Header';
@@ -506,6 +507,7 @@ export default function App() {
         <p className="footer__help">
           Need help? Email <a className="footer__email" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
         </p>
+        {showDataSource() && <DataSource />}
       </footer>
 
       {catsOpen && !wide && (

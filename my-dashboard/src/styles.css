@@ -2306,6 +2306,15 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Buttons that act like links on the auth screens (send a new code, use a different email). */
+.auth__alt .linklike,
+.auth__small .linklike {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .auth__foot {
   margin-top: 16px;
   color: var(--ink-2);
@@ -2363,6 +2372,13 @@ button:disabled {
 
 .pw__toggle:hover {
   background: var(--blue-50);
+}
+
+/* Testers only: where the supply list comes from. */
+.footer__source {
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
 }
 
 /* The 6-digit reset code: big, spaced digits that are easy to check against the email. */

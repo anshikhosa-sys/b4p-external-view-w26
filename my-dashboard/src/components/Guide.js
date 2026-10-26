@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import accountMenu from '../assets/guide/account-menu.webp';
 import addToList from '../assets/guide/add-to-list.webp';
+import categories from '../assets/guide/categories.webp';
 import review from '../assets/guide/review.webp';
 import setup from '../assets/guide/setup.webp';
 import signInForm from '../assets/guide/sign-in-form.webp';
@@ -24,6 +25,10 @@ const STEPS = [
     title: 'Add what you need',
     text: 'Search or pick a category, click Add to list next to a supply, then use − and + to choose how many.',
     shot: {
+      src: categories, width: 920, height: 600,
+      alt: 'The supplies page: the list of categories on the left, the search box at the top, and the category boxes below. A red box is around the Airway & Oxygen category.',
+    },
+    extra: {
       src: addToList, width: 987, height: 89,
       alt: 'One supply row: Elastic bandage, the maker, the batch, Use by Jul 2028, 98 in stock, and an Add to list button with a red box around it.',
     },
@@ -96,6 +101,7 @@ export default function Guide({ contactEmail, signedIn }) {
             </h2>
             <p>{step.text}</p>
             <Shot {...step.shot} />
+            {step.extra && <Shot {...step.extra} />}
           </li>
         ))}
       </ol>

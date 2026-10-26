@@ -18,14 +18,14 @@ test('signed-in clinics don’t see the Sign in button', () => {
   expect(screen.queryByRole('link', { name: 'Sign in' })).not.toBeInTheDocument();
 });
 
-test('each step has one described screenshot; the questions stay folded until opened', () => {
+test('each step has described screenshots; the questions stay folded until opened', () => {
   render(<Guide contactEmail="contact@b4pglobal.org" signedIn={false} />);
   const cards = screen.getAllByRole('listitem').filter((li) => li.classList.contains('guide__card'));
   expect(cards).toHaveLength(4);
   for (const card of cards) {
     const shots = card.querySelectorAll('img');
-    expect(shots).toHaveLength(1);
-    expect(shots[0].getAttribute('alt').length).toBeGreaterThan(30);
+    expect(shots.length).toBeGreaterThanOrEqual(1);
+    for (const img of shots) expect(img.getAttribute('alt').length).toBeGreaterThan(30);
   }
   const question = screen.getByText('Something else is wrong.').closest('details');
   expect(question).not.toHaveAttribute('open');

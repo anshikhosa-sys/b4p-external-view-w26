@@ -86,6 +86,7 @@ export async function apiRequest(path, { method = 'GET', body, timeout = DEFAULT
   return data;
 }
 
+export const getHealth = (opts) => apiRequest('/health', { timeout: 15000, ...opts });
 export const getSupplies = (opts) => apiRequest('/api/supplies', opts);
 export const getAvailability = (opts) => apiRequest('/inventory/availability', opts);
 export const getMyRequests = (email, opts) => apiRequest(`/requests?email=${encodeURIComponent(email)}`, opts);
