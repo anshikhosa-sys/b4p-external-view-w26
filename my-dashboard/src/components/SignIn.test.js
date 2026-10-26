@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DEMO } from '../auth/mockAuth';
-import { SignIn, Welcome } from './SignIn';
+import { ForgotPassword, SignIn, Welcome } from './SignIn';
 
 const CONTACT = 'contact@b4pglobal.org';
 beforeEach(() => window.localStorage.clear());
@@ -69,4 +69,46 @@ test('an invite works until the account is set up, then says it was used', async
   userEvent.click(screen.getByRole('button', { name: 'Reset this demo invite' }));
   expect(await screen.findByRole('heading', { name: /^Welcome/ }, { timeout: 2000 })).toBeInTheDocument();
   window.localStorage.clear();
+});
+
+test('a mistyped email provider gets a one-click fix', () => {
+  render(<SignIn onSignedIn={jest.fn()} contactEmail={CONTACT} />);
+  userEvent.type(screen.getByLabelText('Email'), 'ana@gmial.com');
+  expect(screen.queryByText(/Did you mean/)).not.toBeInTheDocument();
+  userEvent.tab();
+  expect(screen.getByText('ana@gmail.com')).toBeInTheDocument();
+  userEvent.click(screen.getByRole('button', { name: 'Use this' }));
+  expect(screen.getByLabelText('Email')).toHaveValue('ana@gmail.com');
+  expect(screen.queryByText(/Did you mean/)).not.toBeInTheDocument();
+});
+
+test('forgot password: emailed code, then a new password, then signed in', async () => {
+  const onSignedIn = jest.fn();
+  render(<ForgotPassword onSignedIn={onSignedIn} contactEmail={CONTACT} />);
+  userEvent.type(screen.getByLabelText('Email'), DEMO.email);
+  userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+  expect(await screen.findByRole('heading', { name: 'Check your email' }, { timeout: 2000 })).toBeInTheDocument();
+  const code = screen.getByText(/^\d{6}$/).textContent;
+
+  userEvent.type(screen.getByLabelText('Code from the email'), code === '000000' ? '111111' : '000000');
+  userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  expect(await screen.findByText('That code isn’t right.', {}, { timeout: 2000 })).toBeInTheDocument();
+
+  userEvent.type(screen.getByLabelText('Code from the email'), `${code.slice(0, 3)} ${code.slice(3)}`);
+  userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  expect(await screen.findByRole('heading', { name: 'Choose a new password' }, { timeout: 2000 })).toBeInTheDocument();
+  userEvent.type(screen.getByLabelText('New password'), 'new river bend supplies');
+  userEvent.type(screen.getByLabelText('Confirm password'), 'new river bend supplies');
+  userEvent.click(screen.getByRole('button', { name: 'Save and sign in' }));
+  await waitFor(() => expect(onSignedIn).toHaveBeenCalledWith(expect.objectContaining({ email: DEMO.email }), { reset: true }), { timeout: 2000 });
+});
+
+test('forgot password: an unknown email looks the same, and no code works for it', async () => {
+  render(<ForgotPassword onSignedIn={jest.fn()} contactEmail={CONTACT} />);
+  userEvent.type(screen.getByLabelText('Email'), 'nobody@clinic.org');
+  userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+  expect(await screen.findByText(/we’ve emailed it a 6-digit code/, {}, { timeout: 2000 })).toBeInTheDocument();
+  userEvent.type(screen.getByLabelText('Code from the email'), '123456');
+  userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  expect(await screen.findByText('That code has run out.', {}, { timeout: 2000 })).toBeInTheDocument();
 });

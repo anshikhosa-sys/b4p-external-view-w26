@@ -312,9 +312,10 @@ export default function App() {
     navigate(`/sent/${encodeURIComponent(res.request_id)}`, { replace: true });
   };
 
-  const onSignedIn = (next) => (acc, { welcome } = {}) => {
+  const onSignedIn = (next) => (acc, { welcome, reset } = {}) => {
     signedIn(acc);
-    setToast({ message: welcome ? `You’re all set. Signed in as ${acc.org}.` : `Signed in as ${acc.org}.` });
+    const lead = welcome ? 'You’re all set. ' : reset ? 'Password changed. ' : '';
+    setToast({ message: `${lead}Signed in as ${acc.org}.` });
     if (next !== undefined) navigate(next === 'review' ? '/review' : next === 'requests' ? '/requests' : '/', { replace: true });
   };
   const onSignOut = () => {
@@ -340,7 +341,7 @@ export default function App() {
       </Suspense>
     );
   } else if (base.view === 'forgot') {
-    main = <ForgotPassword contactEmail={CONTACT_EMAIL} />;
+    main = <ForgotPassword contactEmail={CONTACT_EMAIL} onSignedIn={onSignedIn(null)} />;
   } else if (base.view === 'welcome') {
     main = <Welcome key={base.token} token={base.token} onSignedIn={onSignedIn(null)} contactEmail={CONTACT_EMAIL} />;
   } else if (authOn && base.view === 'requests' && !account) {

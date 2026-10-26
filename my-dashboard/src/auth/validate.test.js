@@ -1,4 +1,4 @@
-import { cleanEmail, emailError, passwordChecks, validateNewPassword, validateSignIn } from './validate';
+import { cleanEmail, codeError, emailError, emailTypo, passwordChecks, validateNewPassword, validateSignIn } from './validate';
 
 test('emails are trimmed and lowercased before checking', () => {
   expect(cleanEmail('  Ana@Clinic.ORG ')).toBe('ana@clinic.org');
@@ -25,4 +25,21 @@ test('the two passwords must match', () => {
   const base = { email: 'ana@clinic.org', password: 'river bend supplies' };
   expect(validateNewPassword({ ...base, confirm: 'river bend' }).confirm).toMatch(/match/);
   expect(validateNewPassword({ ...base, confirm: base.password })).toEqual({});
+});
+
+test('common email typos get a suggestion; real addresses don’t', () => {
+  expect(emailTypo('ana@gmial.com')).toBe('ana@gmail.com');
+  expect(emailTypo('Ana@Gmail.con')).toBe('ana@gmail.com');
+  expect(emailTypo('ana@hotmal.com')).toBe('ana@hotmail.com');
+  expect(emailTypo('ana@riverside.ogr')).toBe('ana@riverside.org');
+  for (const ok of ['ana@gmail.com', 'ana@mail.com', 'ana@ymail.com', 'ana@riverside.org', 'ana@clinic.co', 'ana@clinic']) {
+    expect(emailTypo(ok)).toBeNull();
+  }
+});
+
+test('reset codes are six digits; spaces are fine', () => {
+  expect(codeError('042 913')).toBeNull();
+  expect(codeError('')).toMatch(/6-digit/);
+  expect(codeError('12345')).toMatch(/6 numbers/);
+  expect(codeError('12345a')).toMatch(/6 numbers/);
 });

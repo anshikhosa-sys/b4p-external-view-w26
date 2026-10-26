@@ -2365,6 +2365,14 @@ button:disabled {
   background: var(--blue-50);
 }
 
+/* The 6-digit reset code: big, spaced digits that are easy to check against the email. */
+.code-input {
+  max-width: 220px;
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3em;
+}
+
 .field__warn {
   margin-top: 8px;
   color: var(--warn);

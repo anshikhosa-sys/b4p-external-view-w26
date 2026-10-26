@@ -89,9 +89,48 @@ export function resetDemoInvite() {
   writeJSON(ACCOUNTS_KEY, saved);
 }
 
-// Always "sent", so the page doesn't reveal which emails have accounts.
-export async function requestReset() {
+const RESETS_KEY = 'b4p.mock.resets.v1';
+export const CODE_MINUTES = 15;
+export const MAX_CODE_TRIES = 5;
+
+// Always "sent", so the page doesn't reveal which emails have accounts. The real
+// server emails a 6-digit code and stores only its hash; this preview hands the
+// code back so the demo can be finished without an inbox.
+export async function requestReset({ email }) {
   await wait();
+  const key = cleanEmail(email);
+  if (!accounts()[key]) return { ok: true, previewCode: null };
+  const code = String(Math.floor(Math.random() * 1e6)).padStart(6, '0');
+  writeJSON(RESETS_KEY, { ...readJSON(RESETS_KEY, {}), [key]: { code, until: Date.now() + CODE_MINUTES * 60000, tries: 0 } });
+  return { ok: true, previewCode: code };
+}
+
+// One message for a wrong code and an unknown email, as above.
+export async function checkResetCode({ email, code }) {
+  await wait(400);
+  const key = cleanEmail(email);
+  const resets = readJSON(RESETS_KEY, {});
+  const entry = resets[key];
+  if (!entry || entry.until <= Date.now() || entry.tries >= MAX_CODE_TRIES) {
+    throw new AuthError('expired', { code: 'expired' });
+  }
+  if (entry.code !== String(code).replace(/\s/g, '')) {
+    const tries = entry.tries + 1;
+    writeJSON(RESETS_KEY, { ...resets, [key]: { ...entry, tries } });
+    throw new AuthError('badcode', { code: tries >= MAX_CODE_TRIES ? 'expired' : 'badcode', left: MAX_CODE_TRIES - tries });
+  }
   return { ok: true };
 }
 
+// Uses up the code, sets the new password and signs in.
+export async function resetPassword({ email, code, password }) {
+  await checkResetCode({ email, code });
+  const key = cleanEmail(email);
+  const resets = readJSON(RESETS_KEY, {});
+  delete resets[key];
+  writeJSON(RESETS_KEY, resets);
+  const account = accounts()[key];
+  writeJSON(ACCOUNTS_KEY, { ...readJSON(ACCOUNTS_KEY, {}), [key]: { ...account, password } });
+  writeJSON(ATTEMPTS_KEY, { ...readJSON(ATTEMPTS_KEY, {}), [key]: undefined });
+  return publicAccount(key, account);
+}

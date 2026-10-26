@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { acceptInvite, AuthError, DEMO, LOCK_MINUTES, lookupInvite, requestReset, resetDemoInvite, signIn } from '../auth/mockAuth';
-import { cleanEmail, emailError, MAX_EMAIL, MAX_PASSWORD, passwordChecks, validateNewPassword, validateSignIn } from '../auth/validate';
+import {
+  acceptInvite, AuthError, checkResetCode, CODE_MINUTES, DEMO, LOCK_MINUTES, lookupInvite, requestReset, resetDemoInvite, resetPassword, signIn,
+} from '../auth/mockAuth';
+import {
+  cleanEmail, CODE_LENGTH, codeError, emailError, emailTypo, MAX_EMAIL, MAX_PASSWORD, passwordChecks, validateNewPassword, validateSignIn,
+} from '../auth/validate';
 import Icon from './Icons';
 
 const timeOf = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -42,7 +46,9 @@ function PasswordField({ id, label, value, onChange, onBlur, error, autoComplete
   );
 }
 
-function EmailField({ value, onChange, onBlur, error, inputRef, hint }) {
+// `onFix` offers "Did you mean …@gmail.com?" for a mistyped provider, once the person has left the box.
+function EmailField({ value, onChange, onBlur, error, inputRef, hint, onFix }) {
+  const fix = onFix && !error ? emailTypo(value) : null;
   return (
     <div className={`field${error ? ' field--error' : ''}`}>
       <label htmlFor="auth-email">Email</label>
@@ -62,6 +68,12 @@ function EmailField({ value, onChange, onBlur, error, inputRef, hint }) {
         aria-describedby={[hint && 'auth-email-hint', error && 'auth-email-error'].filter(Boolean).join(' ') || undefined}
       />
       {hint && <p className="field__hint" id="auth-email-hint">{hint}</p>}
+      {fix && (
+        <p className="field__warn" role="status">
+          Did you mean <strong>{fix}</strong>?{' '}
+          <button type="button" className="linklike" onClick={() => onFix(fix)}>Use this</button>
+        </p>
+      )}
       {error && <p className="field__error" id="auth-email-error">{error}</p>}
     </div>
   );
@@ -190,6 +202,7 @@ export function SignIn({ next, onSignedIn, contactEmail, lineCount = 0 }) {
           onChange={update('email')}
           onBlur={() => setTouched((t) => ({ ...t, email: true }))}
           error={shown.email}
+          onFix={touched.email ? (fix) => setValues((v) => ({ ...v, email: fix })) : null}
         />
         <PasswordField
           id="auth-password"
@@ -210,48 +223,196 @@ export function SignIn({ next, onSignedIn, contactEmail, lineCount = 0 }) {
   );
 }
 
-export function ForgotPassword({ contactEmail }) {
+// Forgot password, in three steps on one page: email -> 6-digit code -> new password.
+// A code (not a link) works when the email is read on a phone and the site is open on
+// a clinic computer.
+export function ForgotPassword({ contactEmail, onSignedIn }) {
+  const [stage, setStage] = useState('email');
   const [email, setEmail] = useState('');
-  const [touched, setTouched] = useState(false);
-  const [sent, setSent] = useState(null);
+  const [code, setCode] = useState('');
+  const [values, setValues] = useState({ password: '', confirm: '' });
+  const [touched, setTouched] = useState({});
+  const [error, setError] = useState(null);
   const [sending, setSending] = useState(false);
-  const ref = useRef(null);
-  const err = touched ? emailError(email) : null;
+  const [previewCode, setPreviewCode] = useState(null);
+  const emailRef = useRef(null);
+  const codeRef = useRef(null);
+  const pwRef = useRef(null);
+  const confirmRef = useRef(null);
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setTouched(true);
-    if (emailError(email)) return ref.current.focus();
+  const sendCode = async () => {
     setSending(true);
-    await requestReset({ email: cleanEmail(email) });
+    setError(null);
+    const res = await requestReset({ email: cleanEmail(email) });
+    setPreviewCode(res.previewCode);
     setSending(false);
-    setSent(cleanEmail(email));
   };
 
-  if (sent) {
+  const onEmail = async (e) => {
+    e.preventDefault();
+    setTouched({ email: true });
+    if (emailError(email)) return emailRef.current.focus();
+    await sendCode();
+    setStage('code');
+  };
+
+  const onCode = async (e) => {
+    e.preventDefault();
+    setTouched((t) => ({ ...t, code: true }));
+    if (codeError(code)) return codeRef.current.focus();
+    setSending(true);
+    setError(null);
+    try {
+      await checkResetCode({ email, code });
+      setStage('password');
+    } catch (err) {
+      setError(err);
+      setCode('');
+      codeRef.current && codeRef.current.focus();
+    }
+    setSending(false);
+  };
+
+  const pwErrors = validateNewPassword({ ...values, email });
+  const onPassword = async (e) => {
+    e.preventDefault();
+    if (sending) return;
+    setTouched((t) => ({ ...t, password: true, confirm: true }));
+    if (pwErrors.password) return pwRef.current.focus();
+    if (pwErrors.confirm) return confirmRef.current.focus();
+    setSending(true);
+    try {
+      const account = await resetPassword({ email, code, password: values.password });
+      onSignedIn(account, { reset: true });
+    } catch (err) {
+      // The code ran out while they chose a password: start the code step again.
+      setError(err);
+      setCode('');
+      setStage('code');
+      setSending(false);
+    }
+  };
+
+  if (stage === 'email') {
     return (
-      <AuthFrame title="Check your email" contactEmail={contactEmail}>
-        <div className="auth__form">
-          <Alert tone="note">
-            <p>If <strong>{sent}</strong> has an account, we’ve sent it a link to choose a new password. The link works for 1 hour.</p>
-          </Alert>
-          <p className="auth__small">Nothing after a few minutes? Check spam, or email <a href={`mailto:${contactEmail}`}>{contactEmail}</a>.</p>
+      <AuthFrame title="Reset your password" lede={`We’ll email you a ${CODE_LENGTH}-digit code.`} contactEmail={contactEmail}>
+        <form className="auth__form" onSubmit={onEmail} noValidate>
+          <EmailField
+            inputRef={emailRef}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setTouched({ email: true })}
+            error={touched.email ? emailError(email) : null}
+            onFix={touched.email ? setEmail : null}
+          />
+          <button type="submit" className="btn btn--primary btn--block btn--lg" disabled={sending}>
+            {sending ? 'Sending…' : 'Email me a code'}
+          </button>
           <p className="auth__alt"><a href="#/signin">Back to sign in</a></p>
-        </div>
+        </form>
       </AuthFrame>
     );
   }
 
+  if (stage === 'code') {
+    const shownCode = touched.code && codeError(code);
+    return (
+      <AuthFrame title="Check your email" contactEmail={contactEmail}>
+        <form className="auth__form" onSubmit={onCode} noValidate>
+          {error ? (
+            <Alert>
+              {error.code === 'badcode' && <p><strong>That code isn’t right.</strong> Check the newest email from us. {error.left} {error.left === 1 ? 'try' : 'tries'} left.</p>}
+              {error.code === 'expired' && <p><strong>That code has run out.</strong> Send a new one below.</p>}
+            </Alert>
+          ) : (
+            <Alert tone="note">
+              <p>If <strong>{cleanEmail(email)}</strong> has an account, we’ve emailed it a {CODE_LENGTH}-digit code. It works for {CODE_MINUTES} minutes.</p>
+            </Alert>
+          )}
+          <div className={`field${shownCode ? ' field--error' : ''}`}>
+            <label htmlFor="reset-code">Code from the email</label>
+            <input
+              ref={codeRef}
+              id="reset-code"
+              className="code-input"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={CODE_LENGTH + 2}
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value);
+                if (error && error.code === 'badcode') setError(null);
+              }}
+              aria-invalid={!!shownCode}
+              aria-describedby={shownCode ? 'reset-code-error' : undefined}
+            />
+            {shownCode && <p className="field__error" id="reset-code-error">{shownCode}</p>}
+          </div>
+          <button type="submit" className="btn btn--primary btn--block btn--lg" disabled={sending || (error && error.code === 'expired')}>
+            {sending ? 'Checking…' : 'Continue'}
+          </button>
+          <p className="auth__small">
+            Nothing after a few minutes? Check spam, or{' '}
+            <button type="button" className="linklike" disabled={sending} onClick={() => { setCode(''); setTouched({}); sendCode(); }}>send a new code</button>.
+          </p>
+          <p className="auth__alt">
+            <button type="button" className="linklike" onClick={() => { setStage('email'); setCode(''); setError(null); setTouched({}); }}>Use a different email</button>
+          </p>
+        </form>
+        {previewCode && <p className="mock-note"><strong>Preview:</strong> no email is sent. The code would be <code>{previewCode}</code>.</p>}
+      </AuthFrame>
+    );
+  }
+
+  const checks = passwordChecks(values.password, email);
+  const shown = { password: touched.password && pwErrors.password, confirm: touched.confirm && pwErrors.confirm };
+  const update = (field) => (e) => setValues((v) => ({ ...v, [field]: e.target.value }));
   return (
-    <AuthFrame title="Reset your password" lede="We’ll email you a link to choose a new one." contactEmail={contactEmail}>
-      <form className="auth__form" onSubmit={onSubmit} noValidate>
-        <EmailField inputRef={ref} value={email} onChange={(e) => setEmail(e.target.value)} onBlur={() => setTouched(true)} error={err} />
+    <AuthFrame title="Choose a new password" lede={`For ${cleanEmail(email)}.`} contactEmail={contactEmail}>
+      <form className="auth__form" onSubmit={onPassword} noValidate>
+        <input type="email" name="username" autoComplete="username" value={cleanEmail(email)} readOnly hidden />
+        <PasswordField
+          id="new-password"
+          label="New password"
+          inputRef={pwRef}
+          autoComplete="new-password"
+          value={values.password}
+          onChange={update('password')}
+          onBlur={() => values.password && setTouched((t) => ({ ...t, password: true }))}
+          error={shown.password}
+          describedBy="pw-rules"
+        >
+          <PasswordRules checks={checks} />
+        </PasswordField>
+        <PasswordField
+          id="confirm-password"
+          label="Confirm password"
+          inputRef={confirmRef}
+          autoComplete="new-password"
+          value={values.confirm}
+          onChange={update('confirm')}
+          onBlur={() => values.confirm && setTouched((t) => ({ ...t, confirm: true }))}
+          error={shown.confirm}
+        />
         <button type="submit" className="btn btn--primary btn--block btn--lg" disabled={sending}>
-          {sending ? 'Sending…' : 'Send reset link'}
+          {sending ? 'Saving…' : 'Save and sign in'}
         </button>
-        <p className="auth__alt"><a href="#/signin">Back to sign in</a></p>
       </form>
     </AuthFrame>
+  );
+}
+
+function PasswordRules({ checks }) {
+  return (
+    <ul className="rules" id="pw-rules" aria-label="Password rules">
+      {checks.map((c) => (
+        <li key={c.id} className={c.ok ? 'rules__ok' : undefined}>
+          <Icon name={c.ok ? 'check' : 'minus'} size={16} />
+          {c.label}
+          <span className="visually-hidden">{c.ok ? ', done' : ', not yet'}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -351,15 +512,7 @@ export function Welcome({ token, onSignedIn, contactEmail }) {
           error={shown.password}
           describedBy="pw-rules"
         >
-          <ul className="rules" id="pw-rules" aria-label="Password rules">
-            {checks.map((c) => (
-              <li key={c.id} className={c.ok ? 'rules__ok' : undefined}>
-                <Icon name={c.ok ? 'check' : 'minus'} size={16} />
-                {c.label}
-                <span className="visually-hidden">{c.ok ? ', done' : ', not yet'}</span>
-              </li>
-            ))}
-          </ul>
+          <PasswordRules checks={checks} />
         </PasswordField>
         <PasswordField
           id="confirm-password"
