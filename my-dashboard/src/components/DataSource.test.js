@@ -17,6 +17,19 @@ test('says when they come from the Google Sheet', async () => {
   expect(await screen.findByText(/Supplies from the Google Sheet/)).toBeInTheDocument();
 });
 
+test('says when it reads the live sheet, read-only', async () => {
+  health({ source: 'sheet-public', ok: true, email: null });
+  render(<DataSource />);
+  expect(await screen.findByText(/Supplies from the live Google Sheet \(read-only\)/)).toBeInTheDocument();
+});
+
+test('sample data is never labelled as the sheet', async () => {
+  health({ source: 'sample', ok: true, email: null });
+  render(<DataSource />);
+  expect(await screen.findByText(/Sample data, not the real inventory/)).toBeInTheDocument();
+  expect(screen.queryByText(/Google Sheet/)).not.toBeInTheDocument();
+});
+
 test('a database that is set up but down is called out', async () => {
   health({ source: 'postgres', ok: false, email: null });
   render(<DataSource />);

@@ -126,7 +126,7 @@ describe('landing', () => {
 
   test('unlabelled rows are hidden (no footnote any more)', async () => {
     await renderAt('#/supplies');
-    fireEvent.change(screen.getByLabelText('What do you need?'), { target: { value: 'cardinal' } });
+    fireEvent.change(screen.getByLabelText('What supplies do you need?'), { target: { value: 'cardinal' } });
     await screen.findByRole('heading', { level: 1, name: /Results for/ });
     expect(screen.queryByText('Unnamed supply')).not.toBeInTheDocument();
     expect(document.querySelectorAll('tr.item-row[data-row="8"]')).toHaveLength(0);
@@ -194,7 +194,7 @@ describe('category page', () => {
 describe('search', () => {
   test('instant search shows matching rows; unlabelled rows never appear', async () => {
     await renderAt('#/supplies');
-    fireEvent.change(screen.getByLabelText('What do you need?'), { target: { value: 'syringe' } });
+    fireEvent.change(screen.getByLabelText('What supplies do you need?'), { target: { value: 'syringe' } });
     expect(await screen.findByRole('heading', { level: 1, name: 'Results for “syringe”' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Synthetic 10ml Syringe$/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Gauze pads 4x4$/ })).not.toBeInTheDocument();
@@ -204,7 +204,7 @@ describe('search', () => {
   test('a supply matching only through its category is listed after a heading, not dropped', async () => {
     handlers.supplies = () => response(200, [...SUPPLIES, supply(9, { Name: 'Alcohol prep pads', General: 'alcohol prep', Subcategory: 'Needles & Syringes', Quantity: '9' })]);
     await renderAt('#/supplies');
-    fireEvent.change(screen.getByLabelText('What do you need?'), { target: { value: 'syringe' } });
+    fireEvent.change(screen.getByLabelText('What supplies do you need?'), { target: { value: 'syringe' } });
     expect(await screen.findByRole('heading', { level: 2, name: 'Also in matching categories' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Alcohol prep pads$/ })).toBeInTheDocument();
     const heading = screen.getByRole('heading', { level: 2, name: 'Also in matching categories' });
@@ -214,10 +214,10 @@ describe('search', () => {
 
   test('no results offers Clear search, which returns to the catalog', async () => {
     await renderAt('#/supplies');
-    fireEvent.change(screen.getByLabelText('What do you need?'), { target: { value: 'zzzz' } });
+    fireEvent.change(screen.getByLabelText('What supplies do you need?'), { target: { value: 'zzzz' } });
     expect(await screen.findByText('No supplies match “zzzz”')).toBeInTheDocument();
     userEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Clear search' }));
-    expect(screen.getByLabelText('What do you need?')).toHaveValue('');
+    expect(screen.getByLabelText('What supplies do you need?')).toHaveValue('');
     expect(await screen.findByRole('heading', { level: 1, name: 'Supplies for partner clinics' })).toBeInTheDocument();
   });
 
@@ -227,20 +227,30 @@ describe('search', () => {
     expect(within(tree).getByRole('link', { name: /All categories/ })).toHaveTextContent(/All categories\s*5$/); // not the expired or unlabelled rows
   });
 
-  test('the search box is only on the supply pages', async () => {
+  test('the search is in the header on every page except sign-in', async () => {
     await renderAt('#/requests', null);
     await screen.findByRole('heading', { level: 1, name: 'My requests' });
-    expect(screen.queryByLabelText('What do you need?')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('banner')).getByRole('searchbox', { name: 'What supplies do you need?' })).toBeInTheDocument();
+    cleanup();
+    await renderAt('#/signin', null);
+    await screen.findByRole('heading', { level: 1, name: 'Sign in' });
     expect(within(screen.getByRole('banner')).queryByRole('searchbox')).not.toBeInTheDocument();
+  });
+
+  test('searching from another page shows the results', async () => {
+    await renderAt('#/');
+    fireEvent.change(screen.getByLabelText('What supplies do you need?'), { target: { value: 'glove' } });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Results for “glove”' })).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/supplies');
   });
 });
 
 describe('request drawer', () => {
   test('the header says the list is empty, then shows the count', async () => {
     await renderAt('#/c/gloves', /^Nitrile gloves$/);
-    expect(headerRequest()).toHaveTextContent(/^Your list is empty$/);
+    expect(headerRequest()).toHaveAccessibleName('Your list, empty');
     userEvent.click(addButton('Nitrile gloves'));
-    expect(headerRequest()).toHaveTextContent('Your list (1)');
+    expect(headerRequest()).toHaveAccessibleName('Your list, 1 supply');
   });
 
   test('Add to list shows "Added" over the stepper briefly', async () => {
@@ -264,7 +274,7 @@ describe('request drawer', () => {
     userEvent.click(within(row).getByRole('button', { name: 'One more Gauze pads 4x4' }));
     expect(within(row).getByLabelText('Quantity of Gauze pads 4x4')).toHaveValue('2');
     expect(within(row).getByRole('button', { name: 'All 2 Gauze pads 4x4 are in your request' })).toBeDisabled();
-    expect(headerRequest()).toHaveTextContent('Your list (1)');
+    expect(headerRequest()).toHaveAccessibleName('Your list, 1 supply');
   });
 
   test('drawer opens from the header, focuses Close, edits, and closes with Escape', async () => {
@@ -306,7 +316,7 @@ describe('request drawer', () => {
     userEvent.click(addButton('Synthetic 10ml Syringe'));
     unmount();
     await renderAt('#/supplies');
-    expect(headerRequest()).toHaveTextContent('Your list (1)');
+    expect(headerRequest()).toHaveAccessibleName('Your list, 1 supply');
   });
 
   test('a 101st supply is refused with a toast', async () => {
@@ -317,7 +327,7 @@ describe('request drawer', () => {
     ));
     at('#/supplies');
     render(<App />);
-    fireEvent.change(await screen.findByLabelText('What do you need?'), { target: { value: 'item 102' } });
+    fireEvent.change(await screen.findByLabelText('What supplies do you need?'), { target: { value: 'item 102' } });
     userEvent.click(await screen.findByRole('button', { name: /^Add Bulk item 102 to request$/ }));
     expect(await screen.findByText(/Your list is full\. It can include up to 100/)).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem(CART_KEY))).toHaveLength(100);
@@ -534,7 +544,7 @@ describe('review and confirmation', () => {
 
   test.each(['#/sent/<b>x</b>', '#/sent/hello%20world', '#/sent/%E0%A4%A'])('forged %s shows the home page', async (hash) => {
     await renderAt(hash, null);
-    expect(await screen.findByRole('heading', { level: 1, name: 'How to request supplies' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Free medical supplies, straight from our warehouse' })).toBeInTheDocument();
   });
 });
 
@@ -635,7 +645,7 @@ describe('ordering, expiry and wording', () => {
 
   test('search results are alphabetical', async () => {
     await renderAt('#/supplies');
-    fireEvent.change(screen.getByLabelText('What do you need?'), { target: { value: 'a' } });
+    fireEvent.change(screen.getByLabelText('What supplies do you need?'), { target: { value: 'a' } });
     await screen.findByRole('heading', { level: 1, name: 'Results for “a”' });
     for (const table of document.querySelectorAll('table.spec')) {
       expect(isSorted([...table.querySelectorAll('tr.item-row .item-row__name')].map((b) => b.textContent))).toBe(true);
@@ -650,7 +660,7 @@ describe('ordering, expiry and wording', () => {
     const row = rowFor('Saline flush');
     expect(within(row).getByText('6 in stock')).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: /lots/ })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('What do you need?'), { target: { value: 'saline' } });
+    fireEvent.change(screen.getByLabelText('What supplies do you need?'), { target: { value: 'saline' } });
     await screen.findByRole('heading', { level: 1, name: 'Results for “saline”' });
     expect(screen.queryByRole('button', { name: /^Old saline bag$/ })).not.toBeInTheDocument();
     go('#/item/4'); // deep link to an expired row
@@ -718,7 +728,7 @@ describe('round 3: progressive rows, titles', () => {
 
   test('matching-type tiles in search name their category', async () => {
     await renderAt('#/supplies');
-    fireEvent.change(screen.getByLabelText('What do you need?'), { target: { value: 'glove' } });
+    fireEvent.change(screen.getByLabelText('What supplies do you need?'), { target: { value: 'glove' } });
     await screen.findByRole('heading', { level: 1, name: 'Results for “glove”' });
     const tile = document.querySelector('a.tile');
     expect(tile.querySelector('.tile__cat')).toHaveTextContent(/^in Gloves$/);
@@ -733,10 +743,21 @@ describe('round 3: progressive rows, titles', () => {
 });
 
 describe('landing tiles', () => {
-  test('every page has a one-click help email at the top', async () => {
+  test('every page has the help email at the bottom', async () => {
     await renderAt('#/supplies');
-    const help = within(screen.getByRole('banner')).getByRole('link', { name: 'Get help: email contact@b4pglobal.org' });
-    expect(help).toHaveAttribute('href', 'mailto:contact@b4pglobal.org?subject=Help%20with%20a%20supply%20request');
+    const help = within(screen.getByRole('contentinfo')).getByRole('link', { name: 'contact@b4pglobal.org' });
+    expect(help).toHaveAttribute('href', 'mailto:contact@b4pglobal.org');
+  });
+
+  test('the header: logo home, Request supplies, Guide, search, Account, Your list', async () => {
+    await renderAt('#/supplies');
+    const bar = screen.getByRole('banner');
+    expect(within(bar).getByRole('link', { name: 'Blueprints for Pangaea, home' })).toHaveAttribute('href', '#/');
+    expect(within(bar).queryByText('Blueprints Supply Requests')).not.toBeInTheDocument();
+    expect(within(bar).getByRole('link', { name: 'Request supplies' })).toHaveAttribute('href', '#/supplies');
+    expect(within(bar).getByRole('link', { name: 'Guide' })).toHaveAttribute('href', '#/guide');
+    expect(within(bar).getByRole('searchbox', { name: 'What supplies do you need?' })).toBeInTheDocument();
+    expect(within(bar).getByRole('button', { name: 'Your list, empty' })).toBeInTheDocument();
   });
 
   const many = Array.from({ length: 9 }, (_, i) => supply(200 + i, {
@@ -774,14 +795,14 @@ describe('landing tiles', () => {
 
   test('the big search box shows results', async () => {
     await renderAt('#/supplies');
-    userEvent.type(screen.getByLabelText('What do you need?'), 'glove');
+    userEvent.type(screen.getByLabelText('What supplies do you need?'), 'glove');
     userEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Results for “glove”' })).toBeInTheDocument();
   });
 
   test('first-timers get a link to the guide, and there is one step bar', async () => {
     await renderAt('#/supplies');
-    expect(screen.getByRole('link', { name: /First time here\?/ })).toHaveAttribute('href', '#/how-it-works');
+    expect(screen.getByRole('link', { name: /First time here\?/ })).toHaveAttribute('href', '#/guide');
     expect(screen.getAllByRole('list', { name: 'Steps to request supplies' })).toHaveLength(1);
   });
 
@@ -792,23 +813,31 @@ describe('landing tiles', () => {
     expect(screen.getByRole('link', { name: /First time here\?/ })).toBeInTheDocument();
   });
 
-  test('home is the guide for visitors, and the supplies once signed in', async () => {
+  test('home is the landing page for everyone, signed in or not', async () => {
     await renderAt('#/');
-    expect(screen.getByRole('heading', { level: 1, name: 'How to request supplies' })).toBeInTheDocument();
-    expect(screen.getAllByRole('link', { name: 'Browse supplies' })[0]).toHaveAttribute('href', '#/supplies');
+    expect(screen.getByRole('heading', { level: 1, name: 'Free medical supplies, straight from our warehouse' })).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Request supplies' })[0]).toHaveAttribute('href', '#/supplies');
+    expect(screen.getByRole('link', { name: 'Read the full step-by-step guide' })).toHaveAttribute('href', '#/guide');
     cleanup();
 
     process.env.REACT_APP_AUTH_PREVIEW = 'on';
     window.localStorage.setItem('b4p.mock.session.v1', JSON.stringify({ email: 'clinic@riverside.org', org: 'Riverside Community Clinic' }));
     try {
       await renderAt('#/');
-      expect(screen.getByRole('heading', { level: 1, name: 'Supplies for partner clinics' })).toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: /First time here\?/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: 'Free medical supplies, straight from our warehouse' })).toBeInTheDocument();
     } finally {
       process.env.REACT_APP_AUTH_PREVIEW = 'off';
       window.localStorage.removeItem('b4p.mock.session.v1');
     }
   });
+
+  test('#/guide is the step-by-step guide, and #/how-it-works goes there', async () => {
+    at('#/how-it-works');
+    render(<App />);
+    expect(await screen.findByRole('heading', { level: 1, name: 'How to request supplies' })).toBeInTheDocument();
+    await waitFor(() => expect(window.location.hash).toBe('#/guide'));
+  });
+
 
   test('with the list open, only the list shows a step bar', async () => {
     await renderAt('#/c/gloves', /^Nitrile gloves$/);

@@ -1,35 +1,33 @@
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import Guide from './Guide';
 
-test('the guide is four short steps and a way to the supplies', () => {
-  render(<Guide contactEmail="contact@b4pglobal.org" signedIn={false} />);
+const STEPS = ['Sign in', 'Find a supply', 'Open it', 'Add it', 'Choose how many', 'Open your list', 'Review it',
+  'Send it', 'Watch your email', 'See past requests'];
+
+test('the guide is ten steps, numbered, with signing in as one step', () => {
+  render(<Guide contactEmail="contact@b4pglobal.org" />);
   expect(screen.getByRole('heading', { level: 1, name: 'How to request supplies' })).toHaveFocus();
-  const steps = ['Sign in', 'Add what you need', 'Review and send', 'Follow your request'];
-  steps.forEach((title, i) => {
+  STEPS.forEach((title, i) => {
     expect(screen.getByRole('heading', { level: 2, name: `Step ${i + 1}: ${title}` })).toBeInTheDocument();
   });
-  for (const link of screen.getAllByRole('link', { name: 'Browse supplies' })) expect(link).toHaveAttribute('href', '#/supplies');
-  expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '#/signin');
+  expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(10);
+  expect(screen.queryByRole('navigation', { name: 'Jump to' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Back to top' })).not.toBeInTheDocument();
 });
 
-test('signed-in clinics don’t see the Sign in button', () => {
-  render(<Guide contactEmail="contact@b4pglobal.org" signedIn />);
-  expect(screen.queryByRole('link', { name: 'Sign in' })).not.toBeInTheDocument();
-});
-
-test('each step has described screenshots; the questions stay folded until opened', () => {
-  render(<Guide contactEmail="contact@b4pglobal.org" signedIn={false} />);
-  const cards = screen.getAllByRole('listitem').filter((li) => li.classList.contains('guide__card'));
-  expect(cards).toHaveLength(4);
-  for (const card of cards) {
-    const shots = card.querySelectorAll('img');
-    expect(shots.length).toBeGreaterThanOrEqual(1);
-    for (const img of shots) expect(img.getAttribute('alt').length).toBeGreaterThan(30);
+test('each step has one described screenshot, and the button names match the site', () => {
+  render(<Guide contactEmail="contact@b4pglobal.org" />);
+  const shots = screen.getAllByRole('img');
+  expect(shots).toHaveLength(10);
+  for (const img of shots) expect(img.getAttribute('alt').length).toBeGreaterThan(30);
+  for (const label of ['Account', 'Sign in', 'Forgot password?', 'Request supplies', '+ Add to list', 'Your list',
+    'Review and send', 'Send request', 'My requests']) {
+    expect(screen.getAllByText(label, { selector: 'strong' }).length).toBeGreaterThan(0);
   }
-  const question = screen.getByText('Something else is wrong.').closest('details');
-  expect(question).not.toHaveAttribute('open');
-  userEvent.click(screen.getByText('Something else is wrong.'));
-  expect(question).toHaveAttribute('open');
-  expect(screen.getAllByRole('link', { name: 'contact@b4pglobal.org' }).length).toBeGreaterThan(0);
+});
+
+test('ends with a short way to get help and a Request supplies button', () => {
+  render(<Guide contactEmail="contact@b4pglobal.org" />);
+  expect(screen.getByRole('link', { name: 'contact@b4pglobal.org' })).toHaveAttribute('href', 'mailto:contact@b4pglobal.org');
+  expect(screen.getByRole('link', { name: 'Request supplies' })).toHaveAttribute('href', '#/supplies');
 });

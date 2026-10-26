@@ -5,7 +5,8 @@ import subprocess
 for _var in ("RESEND_API_KEY", "BREVO_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD",
              "EMAIL_FROM", "EMAIL_REPLY_TO", "HQ_EMAIL", "EMAIL_DAILY_LIMIT", "VERCEL", "VERCEL_ENV",
              "GOOGLE_CREDENTIALS_JSON", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_SHEET_ID",
-             "REQUESTS_SHEET_ID"):
+             "REQUESTS_SHEET_ID", "PUBLIC_SHEET_READ", "INVENTORY_WORKSHEET_GID",
+             "INVENTORY_WORKSHEET_TITLE"):
     os.environ[_var] = ""  # set (empty) before main is imported, so load_dotenv cannot refill them
 
 import psycopg

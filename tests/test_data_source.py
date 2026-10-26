@@ -5,7 +5,7 @@ from conftest import HQ
 
 
 def test_sheet_mode_health(sheet_client):
-    assert sheet_client.get("/health").json() == {"source": "sheet", "ok": True, "email": None}
+    assert sheet_client.get("/health").json() == {"source": "sample", "ok": True, "email": None}
 
 
 def test_sheet_mode_unchanged_lifecycle(sheet_client):

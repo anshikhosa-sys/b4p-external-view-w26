@@ -3656,7 +3656,7 @@ h3 {
   }
 }
 
-/* Header order: title far left; How it works, My requests, Email for help, Your list;
+/* Header order: logo, Request supplies; Guide, My requests, Email for help, Your list;
    then a gap, and the clinic profile (or Sign in) alone at the far right. */
 .header__nav {
   align-items: center;
@@ -3691,3 +3691,1181 @@ h3 {
   }
 }
 
+
+/* ── Home page and supply pages, second pass ─────────────────────────────
+   Flat like the Blueprints site: rules and spacing separate things, not
+   shadows or boxes. Corners stay at --radius. */
+
+.guide {
+  max-width: 1160px;
+}
+
+/* Words on the left, a real picture of the supplies page on the right. */
+.guide__intro {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  align-items: start;
+  gap: 48px;
+  max-width: none;
+  padding: 24px 0 48px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.guide__title {
+  font-size: 52px;
+  letter-spacing: -0.025em;
+}
+
+.guide__lede {
+  margin-top: 20px;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.guide__actions {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.guide__actions .btn--lg {
+  min-height: 56px;
+  padding: 0 32px;
+  font-size: 19px;
+}
+
+.guide__signin {
+  font-size: 18px;
+}
+
+.guide__signin a {
+  font-weight: var(--w-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.guide__hero-shot {
+  margin: 8px 0 0;
+}
+
+.guide__hero-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.guide__hero-shot figcaption {
+  margin-top: 10px;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+/* The steps: big number, words, picture. One row each, divided by rules. */
+.guide__steps-title,
+.guide__questions-title {
+  margin-top: 48px;
+  color: var(--heading);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.guide__cards {
+  display: block;
+  padding: 0;
+  border: 0;
+}
+
+.guide__card {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 4fr) minmax(0, 5fr);
+  align-items: start;
+  gap: 8px 32px;
+  padding: 32px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  font-size: 18px;
+}
+
+.guide__card:last-child {
+  border-bottom: 0;
+}
+
+.guide__n {
+  display: block;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  color: var(--blue-btn);
+  font-size: 56px;
+  font-weight: 800;
+  line-height: 0.9;
+}
+
+.guide__card .guide__step-title {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 24px;
+}
+
+.guide__card .guide__shot {
+  margin: 0 0 12px;
+}
+
+.guide__questions {
+  margin-top: 16px;
+}
+
+.guide__q > summary {
+  justify-content: space-between;
+  gap: 16px;
+  list-style: none;
+}
+
+.guide__q > summary::-webkit-details-marker {
+  display: none;
+}
+
+.guide__q > summary::after {
+  content: '+';
+  flex: none;
+  color: var(--blue);
+  font-size: 26px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.guide__q[open] > summary::after {
+  content: '−';
+}
+
+/* The end: a plain line and the button, no coloured band. */
+.guide__end {
+  justify-content: flex-start;
+  gap: 16px 24px;
+  padding: 32px 0 8px;
+  border-top: 1px solid var(--line-strong);
+  background: none;
+}
+
+.guide__end-title {
+  color: var(--heading);
+  font-size: 22px;
+}
+
+@media (max-width: 899px) {
+  .guide__intro {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+    padding-top: 8px;
+  }
+
+  .guide__title {
+    font-size: 36px;
+  }
+
+  .guide__lede {
+    font-size: 18px;
+  }
+
+  .guide__card {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 4px 16px;
+    padding: 24px 0;
+  }
+
+  .guide__n {
+    font-size: 40px;
+  }
+
+  .guide__card-pics {
+    grid-column: 1 / -1;
+    margin-top: 12px;
+  }
+
+  .guide__steps-title,
+  .guide__questions-title {
+    font-size: 24px;
+  }
+}
+
+/* Supply pages: the guide link is a plain line of text, not a box with a side stripe. */
+.landing__guide {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--blue);
+}
+
+.landing__guide:hover {
+  background: none;
+  text-decoration: underline;
+}
+
+/* Where you are in a request: a thin bar over each step, the current one in navy. */
+.progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  max-width: 760px;
+}
+
+.progress__step {
+  display: block;
+  padding-top: 8px;
+  border-top: 4px solid var(--line);
+  font-weight: var(--w-text);
+}
+
+.progress__step + .progress__step::before {
+  content: none;
+}
+
+.progress__n {
+  display: inline;
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.progress__n::after {
+  content: '.';
+}
+
+.progress__step[aria-current='step'] {
+  border-top-color: var(--navy);
+  color: var(--navy);
+  font-weight: 700;
+}
+
+.progress__step[aria-current='step'] .progress__n {
+  background: none;
+  color: inherit;
+}
+
+.slip .progress {
+  padding: 12px 24px;
+}
+
+/* Category cards on the supplies home: a navy rule on top instead of a box. */
+.cat {
+  border: 0;
+  border-top: 3px solid var(--navy);
+  border-radius: 0;
+  background: none;
+}
+
+.cat__title {
+  border-bottom: 0;
+}
+
+.cat__title a.cat__link {
+  padding: 16px 0 8px;
+}
+
+.cat__title a.cat__link:hover {
+  background: none;
+}
+
+.cat__types,
+.cat__all {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+@media (max-width: 760px) {
+  .progress {
+    font-size: var(--text-xs);
+  }
+}
+
+/* "Add to list" is the main thing to do on a supply row, so it's a solid button. */
+.btn--add.btn--secondary {
+  border-color: var(--blue-btn);
+  background: var(--blue-btn);
+  color: #fff;
+  font-weight: 700;
+}
+
+.btn--add.btn--secondary:hover:not(:disabled) {
+  border-color: var(--blue);
+  background: var(--blue);
+}
+
+.btn--add.btn--secondary:active:not(:disabled) {
+  border-color: var(--navy);
+  background: var(--navy);
+}
+
+.btn--add::before {
+  content: '+';
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.spec .btn--add {
+  width: auto;
+  min-width: 128px;
+  min-height: 46px;
+  gap: 6px;
+  padding: 0 16px;
+}
+
+/* Item photo: a fixed 4:3 frame so the panel doesn't jump while it loads. */
+.detail__photo {
+  display: block;
+  aspect-ratio: 4 / 3;
+  margin-bottom: 24px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--tint);
+}
+
+.detail__photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.detail__photo:hover {
+  border-color: var(--blue);
+}
+
+/* ── Home page: the warehouse landing (direction C) ──────────────────────
+   Plain white ground, real supply photos beside the welcome, and the request
+   explained as a package-tracking line. Kraft only on that line. */
+
+:root {
+  --kraft-edge: #b8925a;
+}
+
+.guide__intro {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  border-bottom: 0;
+  padding-bottom: 32px;
+}
+
+.guide__title {
+  font-size: 50px;
+  line-height: 1.12;
+}
+
+/* The shelf: six real photos, each a link to that supply. */
+.shelf {
+  margin: 0;
+}
+
+.shelf__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.shelf__tile a {
+  display: block;
+  height: 100%;
+  padding: 8px 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+}
+
+.shelf__tile a:hover {
+  border-color: var(--blue);
+  text-decoration: none;
+}
+
+.shelf__tile a:hover .shelf__name {
+  color: var(--blue);
+  text-decoration: underline;
+}
+
+.shelf__tile img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 2px;
+  background: #f2f3f5;
+}
+
+.shelf__name {
+  display: -webkit-box;
+  margin-top: 8px;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: var(--w-strong);
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.shelf__caption {
+  margin-top: 10px;
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+/* How a request travels: four stops on one line, like a delivery tracker. */
+.journey {
+  padding: 40px 0 16px;
+  border-top: 1px solid var(--line-strong);
+  scroll-margin-top: calc(var(--header-h) + 16px);
+}
+
+.journey__title {
+  color: var(--heading);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.journey__title:focus {
+  outline: none;
+}
+
+.journey__lede {
+  margin-top: 6px;
+  color: var(--ink-2);
+}
+
+.journey__stops {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 28px;
+}
+
+.journey__stops::before {
+  content: '';
+  position: absolute;
+  top: 15px;
+  left: 12.5%;
+  right: 12.5%;
+  height: 4px;
+  background: var(--kraft-edge);
+}
+
+.journey__stop {
+  position: relative;
+  padding: 0 12px;
+  text-align: center;
+}
+
+.journey__dot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: var(--navy);
+  color: #fff;
+  font-weight: 800;
+}
+
+.journey__stop-title {
+  color: var(--heading);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.journey__stop p {
+  margin-top: 6px;
+  font-size: 17px;
+}
+
+.guide__steps-title {
+  margin-top: 56px;
+}
+
+@media (max-width: 899px) {
+  .guide__title {
+    font-size: 36px;
+  }
+
+  .journey__stops {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .journey__stops::before {
+    top: 0;
+    bottom: 0;
+    left: 15px;
+    right: auto;
+    width: 4px;
+    height: auto;
+  }
+
+  .journey__stop {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 0 14px;
+    padding: 0;
+    text-align: left;
+  }
+
+  .journey__dot {
+    margin: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .shelf__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* No single word left alone on the last line of a paragraph. */
+.guide p,
+.journey p {
+  text-wrap: pretty;
+}
+
+@media (max-width: 899px) {
+  .guide__intro {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .journey__stops::before {
+    bottom: 24px;
+  }
+}
+
+/* Header: the logo alone goes home; "Request supplies" sits where the site name was. */
+.header__brand {
+  padding: 0 4px;
+}
+
+.header__request {
+  flex: none;
+  min-height: var(--target);
+  padding: 0 18px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.header__request:hover {
+  text-decoration: none;
+}
+
+/* Phones: logo, Request supplies, Help (icon), Your list and Sign in on one row. */
+@media (max-width: 480px) {
+  .header__inner {
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .header__logo {
+    width: 44px;
+    height: 26px;
+  }
+
+  .header__brand {
+    padding: 0;
+  }
+
+  .header__request {
+    padding: 0 12px;
+    font-size: var(--text-sm);
+  }
+
+  .header__nav {
+    gap: 6px;
+  }
+
+  .header__email .header__help-short {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .header__email {
+    padding: 0 10px;
+  }
+
+  .header__slip {
+    padding: 0 8px;
+  }
+
+  .header__profile .header__link {
+    font-size: var(--text-sm);
+  }
+}
+
+/* Phones: Help steps aside (it's also in the footer) and "Your list" shows as its icon and count. */
+@media (max-width: 480px) {
+  .header__email {
+    display: none;
+  }
+
+  .header__slip-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .header__request {
+    padding: 0 10px;
+  }
+
+  .header__cats {
+    padding: 0 10px;
+  }
+}
+
+/* The moving shelf: a fixed window the photo grid slides up through, one copy's height per loop. */
+.shelf__window {
+  position: relative;
+  overflow: hidden;
+}
+
+.shelf__window--moving {
+  height: 480px;
+}
+
+.shelf__window--moving .shelf__grid {
+  animation: shelf-up calc(var(--rows) * 7s) linear infinite;
+}
+
+.shelf__window:hover .shelf__grid,
+.shelf__window:focus-within .shelf__grid,
+.shelf__window.is-paused .shelf__grid {
+  animation-play-state: paused;
+}
+
+/* Each copy is --rows rows of tiles plus the gaps between them, so moving up by exactly half
+   the list (one copy plus one gap) lands on the same picture it started from. */
+.shelf__window--moving .shelf__grid {
+  gap: 12px;
+}
+
+@keyframes shelf-up {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(-50% - 6px)); }
+}
+
+/* Reduced motion: no sliding; the window scrolls by hand instead. */
+@media (prefers-reduced-motion: reduce) {
+  .shelf__window--moving {
+    overflow-y: auto;
+  }
+
+  .shelf__window--moving .shelf__grid {
+    animation: none;
+  }
+
+  .shelf__tile[aria-hidden='true'] {
+    display: none;
+  }
+}
+
+.shelf__caption strong {
+  color: var(--ink);
+}
+
+@media (max-width: 899px) {
+  .shelf__window--moving {
+    height: 400px;
+  }
+}
+
+/* "Guide": a button next to "Request supplies", outlined in Blueprints blue. */
+.header__guide {
+  flex: none;
+  min-height: var(--target);
+  padding: 0 18px;
+  border: 2px solid var(--blue);
+  background: #fff;
+  color: var(--blue);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.header__guide:hover {
+  background: var(--blue-50);
+  text-decoration: none;
+}
+
+.header__guide:active {
+  background: #d5e2ff;
+}
+
+.header__break {
+  display: none;
+}
+
+/* Phones: two rows. Logo, Your list and Sign in on top; Request supplies, Guide (and
+   Categories on supply pages) below, as wide buttons. */
+@media (max-width: 480px) {
+  .header__inner {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+    padding-bottom: 10px;
+  }
+
+  .header__nav {
+    display: contents;
+  }
+
+  .header__brand { order: 1; }
+  .header__slip { order: 2; margin-left: auto; }
+  .header__profile { order: 3; }
+  .header__break { display: block; order: 4; flex-basis: 100%; height: 0; }
+  .header__request { order: 5; flex: 1 1 auto; justify-content: center; }
+  .header__guide { order: 6; flex: 1 1 auto; justify-content: center; padding: 0 12px; }
+  .header__cats { order: 7; }
+}
+
+@media (max-width: 480px) {
+  /* Jump targets clear the two-row header. */
+  .journey,
+  .type,
+  .guide__step {
+    scroll-margin-top: 136px;
+  }
+}
+
+/* ── Header, final layout (modelled on a big-store header) ──────────────
+   One white row, left to right: logo (home), Request supplies, Guide, a wide search,
+   Account, Your list. Phones: three short rows (see below). */
+
+.header {
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  box-shadow: none;
+}
+
+.header__inner {
+  flex-wrap: nowrap;
+  gap: 20px;
+  min-height: 72px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.header__brand {
+  padding: 0;
+}
+
+.header__logo {
+  width: 68px;
+  height: 40px;
+}
+
+.header__main {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 20px;
+}
+
+.header__request {
+  min-height: var(--target);
+  padding: 0 18px;
+  font-weight: 700;
+}
+
+.header__guide,
+.header__cats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--target);
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.header__guide:hover,
+.header__cats:hover {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.header__guide[aria-current='page'] {
+  color: var(--blue);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+/* The search: wide, rounded, light grey, the magnifier inside on the right. */
+.hsearch {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.hsearch__input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 56px 0 20px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #eef0f3;
+  color: var(--ink);
+  font-size: var(--text-md);
+}
+
+.hsearch__input::placeholder {
+  color: var(--ink-2);
+}
+
+.hsearch__input:hover {
+  border-color: var(--line-strong);
+}
+
+.hsearch__input:focus {
+  border-color: var(--blue);
+  background: #fff;
+  outline: 2px solid var(--blue);
+  outline-offset: 0;
+}
+
+.hsearch__input::-webkit-search-cancel-button {
+  margin-right: 4px;
+}
+
+.hsearch__btn {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink);
+}
+
+.hsearch__btn:hover {
+  background: #dfe3e9;
+}
+
+/* Account and Your list: an icon with a small label under it. */
+.header__end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.header__icon-btn,
+.header__slip,
+.header__slip--empty,
+.acct__btn {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 64px;
+  min-height: 52px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  list-style: none;
+}
+
+.acct__btn::-webkit-details-marker {
+  display: none;
+}
+
+.header__icon-btn:hover,
+.acct__btn:hover,
+.acct[open] .acct__btn {
+  background: var(--tint);
+  text-decoration: none;
+}
+
+.header__icon-btn[aria-current='page'] {
+  color: var(--blue);
+}
+
+.header__icon-label {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.header__slip-icon {
+  position: relative;
+  display: inline-flex;
+}
+
+.header__badge {
+  position: absolute;
+  top: -6px;
+  right: -11px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--blue-btn);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 22px;
+  text-align: center;
+}
+
+/* Mid-size screens: the search keeps whatever room is left. */
+@media (max-width: 1100px) {
+  .header__inner {
+    gap: 14px;
+  }
+
+  .header__main {
+    gap: 14px;
+  }
+}
+
+/* Phones and small tablets: logo, Account, Your list; the search; Request supplies, Guide. */
+@media (max-width: 760px) {
+  .header__inner {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      'brand . end'
+      'search search search'
+      'main main main';
+    gap: 8px 8px;
+    min-height: 0;
+    padding: 8px 12px 10px;
+  }
+
+  .header__brand { grid-area: brand; }
+  .header__end { grid-area: end; }
+  .hsearch { grid-area: search; min-width: 0; }
+  .header__main { grid-area: main; gap: 8px; }
+
+  .header__logo {
+    width: 54px;
+    height: 32px;
+  }
+
+  .header__request {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .header__guide,
+  .header__cats {
+    padding: 0 10px;
+  }
+
+  .hsearch__input {
+    min-height: 46px;
+  }
+}
+
+/* Phones: the three-row header scrolls away with the page instead of covering a third of it,
+   so jump targets need only a little room above them. */
+@media (max-width: 760px) {
+  .header {
+    position: relative;
+  }
+
+  .journey,
+  .type {
+    scroll-margin-top: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header__cats {
+    min-width: 44px;
+    justify-content: center;
+  }
+}
+
+/* ── Step-by-step guide (#/guide) ────────────────────────────────────────
+   Large type, one step per row: a big number, the words, then the picture. */
+
+.tutorial {
+  max-width: 920px;
+  margin: 0 auto;
+  font-size: 19px;
+  line-height: 1.6;
+}
+
+.tutorial__intro {
+  padding: 16px 0 32px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.tutorial .guide__title {
+  font-size: 44px;
+}
+
+.tutorial .guide__lede {
+  max-width: 40em;
+  font-size: 20px;
+}
+
+
+
+
+
+
+
+
+.tutorial .guide__title:focus {
+  outline: none;
+}
+
+.tutorial__steps {
+  margin-top: 20px;
+  list-style: none;
+}
+
+.tutorial__step {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 0 16px;
+  padding: 18px 0;
+}
+
+.tutorial__step + .tutorial__step {
+  border-top: 1px solid var(--line);
+}
+
+.tutorial__n {
+  color: var(--blue-btn);
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: right;
+}
+
+.tutorial__text {
+  max-width: 40em;
+  text-wrap: pretty;
+}
+
+.guide__label {
+  color: var(--heading);
+  font-weight: 800;
+}
+
+.tutorial .guide__shot {
+  margin: 16px 0 4px;
+}
+
+.tutorial .guide__shot img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.tutorial .guide__shot--narrow img {
+  width: auto;
+  max-width: min(100%, 400px);
+}
+
+.tutorial .guide__status,
+.tutorial .guide__labels {
+  margin-top: 10px;
+}
+
+
+
+@media (max-width: 760px) {
+  .tutorial {
+    font-size: 18px;
+  }
+
+  .tutorial .guide__title {
+    font-size: 34px;
+  }
+
+
+  .tutorial__step {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 0 12px;
+  }
+
+  .tutorial__n {
+    font-size: 30px;
+  }
+
+}
+
+.journey__more {
+  margin-top: 28px;
+  font-size: var(--text-md);
+}
+
+.journey__more a {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Guide: lines no longer than about 70 characters. */
+.tutorial__text,
+.tutorial .guide__lede {
+  max-width: 34em;
+}
+
+/* Guide: each step's short title, and the help line at the end. */
+.tutorial__title {
+  color: var(--heading);
+  font-size: 23px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.tutorial__text {
+  margin-top: 4px;
+}
+
+.tutorial__help {
+  margin: 32px 0 8px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  font-size: 19px;
+}

@@ -48,7 +48,7 @@ def _patch(c, rid, status):
 
 def _pick_two(c):
     """Two item names with 6+ in stock that no open request touches and that are unique by name."""
-    if c.get("/health").json()["source"] == "sheet":
+    if c.get("/health").json()["source"] == "sample":
         return ("Gauze", 10), ("Bandage", 50)
     inv = c.get("/api/supplies").json()
     used = {r["Item Name"].strip().lower() for r in c.get("/requests", headers=HQ).json()}

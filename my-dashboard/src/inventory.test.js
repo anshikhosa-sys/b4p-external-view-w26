@@ -762,3 +762,19 @@ describe('search folding', () => {
     expect(find(name, query)).toBe(false);
   });
 });
+
+describe('driveFileId', () => {
+  const { driveFileId: id } = require('./inventory');
+  const FILE = '1pOZb7UjIm_t98gR6Z86DZ84yGCjw59Pd';
+  test.each([
+    `https://drive.google.com/file/d/${FILE}/view?usp=drivesdk`,
+    `https://drive.google.com/open?id=${FILE}`,
+    `https://drive.google.com/uc?id=${FILE}&export=download`,
+    `https://docs.google.com/file/d/${FILE}/edit`,
+  ])('reads the file id from %s', (url) => expect(id(url)).toBe(FILE));
+  test.each([
+    '', null, 'javascript:alert(1)', `http://drive.google.com/file/d/${FILE}/view`,
+    `https://evil.example/file/d/${FILE}/view`, `https://drive.google.com.evil.example/file/d/${FILE}`,
+    'https://drive.google.com/file/d/short/view', 'https://drive.google.com/file/d/"><img>/view',
+  ])('gives nothing for %s', (url) => expect(id(url)).toBe(''));
+});

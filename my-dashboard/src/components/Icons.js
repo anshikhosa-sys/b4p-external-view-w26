@@ -15,6 +15,7 @@ const paths = {
   mail: <><rect x="3.5" y="5.5" width="17" height="13" rx="1.5" /><path d="M4 7l8 6 8-6" /></>,
   clock: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
   back: <path d="M14.5 6l-6 6 6 6" />,
+  user: <><circle cx="12" cy="8.5" r="3.8" /><path d="M4.5 20c.8-3.9 3.8-6 7.5-6s6.7 2.1 7.5 6" /></>,
 };
 
 export default function Icon({ name, size = 20, label, className }) {

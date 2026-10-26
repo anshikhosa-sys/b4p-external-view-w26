@@ -15,7 +15,6 @@ import MyRequests from './components/MyRequests';
 import Progress from './components/Progress';
 import RequestSlip from './components/RequestSlip';
 import { ForgotPassword, SignIn, Welcome } from './components/SignIn';
-import SearchBar from './components/SearchBar';
 import SearchResults from './components/SearchResults';
 import { EmptyState, ErrorState, SkeletonTable, WakingNotice } from './components/States';
 import { closeTo, navigate, useDebounced, useHashRoute, useMediaQuery } from './hooks';
@@ -47,7 +46,8 @@ const TITLES = {
   signin: 'Sign in', forgot: 'Reset your password', welcome: 'Set up your account', guide: 'How to request supplies',
 };
 const AUTH_VIEWS = ['signin', 'forgot', 'welcome'];
-// The guide is long and read rarely, so it loads only when opened.
+// The home page and the guide load only when opened.
+const Home = lazy(() => import('./components/Home'));
 const Guide = lazy(() => import('./components/Guide'));
 
 function enrich(rows) {
@@ -139,8 +139,12 @@ export default function App() {
   const { signedIn, signOut } = auth;
   // Signed in: the clinic comes from the account, not from what was typed.
   const org = useMemo(() => (account ? { name: account.org, email: account.email } : savedOrg), [account, savedOrg]);
-  // Home is the guide for visitors; signed-in clinics go straight to the supplies.
-  const route = hashRoute.view === 'home' ? { view: account ? 'catalog' : 'guide', home: true } : hashRoute;
+  // Home is the landing page (with how requesting works) for everyone, signed in or not.
+  const route = hashRoute.view === 'home' ? { view: 'landing', home: true } : hashRoute;
+  // #/how-it-works is the guide's old address.
+  useEffect(() => {
+    if (hashRoute.legacy) navigate('/guide', { replace: true });
+  }, [hashRoute.legacy]);
 
   const [rawQuery, setRawQuery] = useState('');
   // Typing stays instant; results follow at lower priority.
@@ -169,6 +173,13 @@ export default function App() {
   const onQuery = useCallback((value) => {
     setRawQuery(value);
     if (value.trim() && !inCatalogRef.current) {
+      keepQuery.current = true;
+      navigate('/supplies');
+    }
+  }, []);
+  // Enter or the search button: show the results, from any page.
+  const onSearch = useCallback(() => {
+    if (!inCatalogRef.current) {
       keepQuery.current = true;
       navigate('/supplies');
     }
@@ -260,7 +271,7 @@ export default function App() {
   }, [offerUndo, remove]);
 
   // New pages start at the top; overlays leave the page where it was.
-  const baseKey = `${base.view}/${base.slug || ''}/${base.id || ''}/${query ? 'q' : ''}`;
+  const baseKey = `${base.view}/${base.slug || ''}/${base.id || ''}/${query ? 'q' : ''}/${base.home ? 'home' : ''}`;
   useLayoutEffect(() => {
     if (!base.type) window.scrollTo(0, 0);
   }, [baseKey, base.type]);
@@ -317,7 +328,7 @@ export default function App() {
     signedIn(acc);
     const lead = welcome ? 'You’re all set. ' : reset ? 'Password changed. ' : '';
     setToast({ message: `${lead}Signed in as ${acc.org}.` });
-    if (next !== undefined) navigate(next === 'review' ? '/review' : next === 'requests' ? '/requests' : '/', { replace: true });
+    if (next !== undefined) navigate(next === 'review' ? '/review' : next === 'requests' ? '/requests' : '/supplies', { replace: true });
   };
   const onSignOut = () => {
     signOut();
@@ -335,10 +346,16 @@ export default function App() {
         Signed in with {account.email}.
       </EmptyState>
     ) : <SignIn next={base.next} onSignedIn={onSignedIn(base.next)} contactEmail={CONTACT_EMAIL} />;
+  } else if (base.view === 'landing') {
+    main = (
+      <Suspense fallback={<p className="hint" role="status">Loading…</p>}>
+        <Home signedIn={!!account} products={products} />
+      </Suspense>
+    );
   } else if (base.view === 'guide') {
     main = (
       <Suspense fallback={<p className="hint" role="status">Loading the guide…</p>}>
-        <Guide contactEmail={CONTACT_EMAIL} signedIn={!!account} />
+        <Guide contactEmail={CONTACT_EMAIL} />
       </Suspense>
     );
   } else if (base.view === 'forgot') {
@@ -462,14 +479,13 @@ export default function App() {
           )}
           {/* Supplies home only, for visitors: the guide link comes first, even while the list loads. */}
           {base.view === 'catalog' && !account && !searchView && (
-            <a className="landing__guide" href="#/how-it-works">
+            <a className="landing__guide" href="#/guide">
               <strong>First time here?</strong> Read how to request supplies, step by step
               <span aria-hidden="true"> →</span>
             </a>
           )}
           {/* One step bar on screen: the list drawer shows its own (step 2). */}
           {inventory.status === 'done' && route.view !== 'slip' && <Progress step={1} />}
-          {inventory.status === 'done' && <SearchBar value={rawQuery} onChange={onQuery} />}
           {page}
         </div>
       </div>
@@ -493,12 +509,13 @@ export default function App() {
         onOpenSlip={() => navigate('/slip')}
         onOpenCategories={!wide && inCatalog && inventory.status === 'done' ? () => setCatsOpen(true) : null}
         onHome={() => setRawQuery('')}
-        siteName={SITE_NAME}
         account={account}
         onSignOut={onSignOut}
         authPage={AUTH_VIEWS.includes(base.view)}
         showSignIn={authOn}
-        contactEmail={CONTACT_EMAIL}
+        query={rawQuery}
+        onQuery={onQuery}
+        onSearch={onSearch}
       />
       <main id="main" tabIndex={-1} className="main">
         {main}
@@ -554,6 +571,7 @@ export default function App() {
       {route.view === 'item' && inventory.status === 'done' && (
         <ItemDetail
           item={detailItem}
+          row={Number(route.id)}
           missing={!detailItem}
           onHold={detailItem ? detailItem.onHold : false}
           quantity={detailItem ? cart.quantityOf(detailItem.id) : 0}
@@ -582,7 +600,7 @@ function routePath(r) {
   if (r.view === 'requests') return '/requests';
   if (r.view === 'signin') return `/signin${r.next ? `/${r.next}` : ''}`;
   if (r.view === 'forgot') return '/forgot';
-  if (r.view === 'guide') return '/how-it-works';
+  if (r.view === 'guide') return '/guide';
   if (r.view === 'welcome') return `/welcome/${r.token}`;
   if (r.view === 'checkout') return '/review';
   if (r.view === 'sent') return `/sent/${r.id}`;

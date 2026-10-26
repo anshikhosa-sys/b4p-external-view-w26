@@ -1,4 +1,6 @@
 import concurrent.futures
+import csv
+import io
 import hashlib
 import ipaddress
 import unicodedata
@@ -25,6 +27,7 @@ from google.oauth2.service_account import Credentials
 from pydantic import BaseModel, Field, field_validator
 
 import psycopg
+import requests
 from fastapi.responses import JSONResponse
 
 from app import db
@@ -101,6 +104,21 @@ def _use_sample_data() -> bool:
     return explicit or _auto_sample_preview()
 
 
+def _public_sheet() -> bool:
+    """Local, read-only use of a sheet shared as "Anyone with the link can view": the inventory
+    comes from Google's CSV export, so no service-account key is needed. Requests are kept in
+    memory like sample mode, so nothing is ever written to the sheet. Never on production."""
+    if _vercel_env() == "production":
+        return False
+    on = os.environ.get("PUBLIC_SHEET_READ", "").strip().lower() in ("1", "true", "yes")
+    return on and bool(os.environ.get("GOOGLE_SHEET_ID", "").strip())
+
+
+def _requests_in_memory() -> bool:
+    """Requests are kept in this process, never written to the sheet."""
+    return _use_sample_data() or _public_sheet()
+
+
 def _check_configured() -> None:
     """Production with no database and no Google credentials is a deploy mistake: say so (503)."""
     if _vercel_env() == "production" and not db.enabled() and not _has_google_creds():
@@ -151,6 +169,8 @@ def _get_google_creds() -> Credentials:
 
 
 def _gspread_client():
+    if _public_sheet():  # read-only mode: the Sheets API (and so any write) is never used
+        raise RuntimeError("PUBLIC_SHEET_READ is on: the Google Sheets API is not used.")
     return gspread.authorize(_get_google_creds())
 
 
@@ -291,7 +311,7 @@ def _load_inventory_records() -> list[dict]:
     cached = _inventory_cache.get("records")
     if cached is not None and time.monotonic() - _inventory_cache["at"] < INVENTORY_CACHE_SECONDS:
         return list(cached)
-    records = _read_sheet_inventory()
+    records = _read_public_sheet_inventory() if _public_sheet() else _read_sheet_inventory()
     _inventory_cache.update(records=records, at=time.monotonic())
     return list(records)
 
@@ -542,6 +562,46 @@ def _read_sheet_inventory() -> list[dict]:
     return records
 
 
+def _parse_inventory_csv(text: str) -> list[dict]:
+    """CSV text (header row first) to records shaped like _read_sheet_inventory's."""
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        return []
+    header = list(rows[0])
+    while header and not str(header[-1]).strip():  # gviz pads the header with empty columns
+        header.pop()
+    header = _clean_header(header)
+    records = []
+    for i, row in enumerate(rows[1:]):
+        rec = {name: (row[j] if j < len(row) else "") for j, name in enumerate(header)}
+        rec["_sheet_row"] = i + 2
+        records.append(rec)
+    return records
+
+
+def _read_public_sheet_inventory() -> list[dict]:
+    """The inventory tab of a link-shared sheet, read-only. With INVENTORY_WORKSHEET_GID the exact
+    CSV export is used; otherwise the tab is found by name through gviz, which can blank out cells
+    whose type differs from the rest of their column."""
+    sheet_id = os.environ.get("GOOGLE_SHEET_ID", "").strip()
+    gid = os.environ.get("INVENTORY_WORKSHEET_GID", "").strip()
+    base = f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+    if gid:
+        url, params = f"{base}/export", {"format": "csv", "gid": gid}
+    else:
+        title = os.environ.get("INVENTORY_WORKSHEET_TITLE", "").strip() or "Final Inventorying"
+        url, params = f"{base}/gviz/tq", {"tqx": "out:csv", "sheet": title}
+    try:
+        resp = requests.get(url, params=params, timeout=20)
+    except requests.RequestException:
+        raise HTTPException(status_code=503, detail="Couldn't reach the inventory sheet. Try again shortly.")
+    if resp.status_code != 200 or "text/csv" not in resp.headers.get("content-type", ""):
+        # A sign-in page (HTML) means the sheet isn't shared by link.
+        raise HTTPException(status_code=503, detail="Couldn't read the inventory sheet. It must be shared "
+                                                    "as 'Anyone with the link can view'.")
+    return _parse_inventory_csv(resp.content.decode("utf-8-sig"))
+
+
 def _open_spreadsheet():
     sheet_id = os.environ.get("GOOGLE_SHEET_ID")
     if not sheet_id:
@@ -633,7 +693,13 @@ def _health_email():
 def health():
     if db.enabled():
         return {"source": "postgres", "ok": db.ping(), "email": _health_email()}
-    return {"source": "sheet", "ok": True, "email": _health_email()}
+    if _use_sample_data():
+        source = "sample"
+    elif _public_sheet():
+        source = "sheet-public"  # the live sheet, read-only through its CSV export
+    else:
+        source = "sheet"
+    return {"source": source, "ok": True, "email": _health_email()}
 
 
 PUBLIC_CACHE = "public, max-age=60, stale-while-revalidate=300"
@@ -651,17 +717,72 @@ def _cached_json(request: Request, data) -> Response:
     return Response(content=body, media_type="application/json", headers=headers)
 
 
+# --- product photos (Google Drive links in the sheet's Image URL column) -----------------------
+_DRIVE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{20,100}$")
+_DRIVE_HOSTS = ("drive.google.com", "docs.google.com")
+# Words that mean a row is about a patient or trial-subject sample: its photo may show the label.
+_PATIENT_WORDS_RE = re.compile(
+    r"\b(?:pt|pat|patient)\b|\bmrn\b|\bmed\.?\s*rec|medical\s+record|\bd\.?o\.?b\b|date\s+of\s+birth"
+    r"|\bsubj(?:ect)?s?\b|\bparticipant|\bpre-?dose|\bpost-?dose|\bscreening\b|\bC\d{1,2}D\d{1,2}\b", re.I)
+# Containers that may hold a used sample (and so carry a patient or subject label): no photo at all.
+_SAMPLE_CONTAINER_RE = re.compile(
+    r"\b(?:sample|specimen|test|blood\s+collection|urine|culture)\s+(?:collection\s+)?"
+    r"(?:tubes?|vials?|containers?|cups?|bottles?)\b", re.I)
+
+
+def _is_image_col(key: str) -> bool:
+    return key.strip().lower() == "image url"
+
+
+def _drive_file_id(url) -> Optional[str]:
+    """The file ID of a Google Drive link (/file/d/ID/..., open?id=ID, uc?id=ID); None for anything else."""
+    if not isinstance(url, str):
+        return None
+    m = re.match(r"^https://([a-z.]+)/(.*)$", url.strip())
+    if not m or m.group(1) not in _DRIVE_HOSTS:
+        return None
+    path = m.group(2)
+    found = re.match(r"^file/d/([^/?#]+)", path) or re.search(r"[?&]id=([^&#]+)", path)
+    file_id = found.group(1) if found else ""
+    return file_id if _DRIVE_ID_RE.match(file_id) else None
+
+
+def _photo_may_show_patient(raw: dict, redacted: dict) -> bool:
+    """True when a row's text had patient details removed, its Name or Notes talk about a patient or
+    trial subject, or it is a sample container (tube, vial...): a photo of it can show a label with
+    the same details, so it is never sent."""
+    for key, value in raw.items():
+        if isinstance(value, str) and not _is_image_col(key) and redacted.get(key) != value:
+            return True
+    text = " ".join(str(raw.get(k) or "") for k in raw if k.strip().lower() in ("name", "notes", "note"))
+    kind = " ".join(str(raw.get(k) or "") for k in raw if k.strip().lower() in ("name", "general"))
+    name = next((str(v or "").strip() for k, v in raw.items() if k.strip().lower() == "name"), "")
+    # A name that is only a code ("K012762892", "AP237146K01") is usually a sample's accession label.
+    code_only = bool(re.fullmatch(r"[A-Za-z]{0,4}\d[A-Za-z0-9-]{5,}", name)) and sum(c.isdigit() for c in name) >= 6
+    return bool(_PATIENT_WORDS_RE.search(text) or _SAMPLE_CONTAINER_RE.search(kind) or code_only)
+
+
+def _with_safe_photo(raw: dict, redacted: dict) -> dict:
+    """The redacted row, with Image URL replaced by a clean Drive link, or removed when there is
+    no usable link or the photo might show patient details."""
+    out = {k: v for k, v in redacted.items() if not _is_image_col(k)}
+    url = next((v for k, v in raw.items() if _is_image_col(k)), None)
+    file_id = _drive_file_id(url)
+    if file_id and not _photo_may_show_patient(raw, redacted):
+        out["Image URL"] = f"https://drive.google.com/file/d/{file_id}/view"
+    return out
+
+
 @app.get("/api/supplies")
 async def supplies(request: Request):
-    # Photos are not shown anymore and can show patient labels, so they are not sent.
-    rows = [{k: v for k, v in rec.items() if k.strip().lower() != "image url"}
-            for rec in get_inventory_records()]
+    raw_rows = _load_inventory_records()
+    rows = [_with_safe_photo(raw, _redact_row(raw)) for raw in raw_rows]
     return _cached_json(request, rows)
 
 
 @app.get("/api/requests", dependencies=[Depends(require_hq)])  # the whole internal tab: HQ only
 async def list_requests():
-    if _use_sample_data():
+    if _requests_in_memory():
         return []
 
     spreadsheet = _open_requests_spreadsheet()
@@ -681,7 +802,7 @@ async def submit_request(body: SubmitRequestBody):
                 detail=f"inventory_sheet_row {line.sheet_row} is not a current inventory row.",
             )
 
-    if _use_sample_data():
+    if _requests_in_memory():
         cid = (body.client_request_id or "").strip()
         if cid:
             if cid in _sample_client_request_ids:
@@ -689,7 +810,7 @@ async def submit_request(body: SubmitRequestBody):
             _sample_client_request_ids.add(cid)
         return {
             "ok": True,
-            "message": "USE_SAMPLE_DATA is on — nothing was written to Google Sheets.",
+            "message": "Kept in memory only (sample or read-only sheet mode); nothing was written to Google Sheets.",
             "request_group_id": str(uuid.uuid4()),
             "lines": len(body.items),
         }
@@ -1027,13 +1148,13 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
     flags = _review_flags(body)
     flagged = [i.item_name for i, f in zip(body.items, flags) if f]
 
-    if _use_sample_data():
+    if _requests_in_memory():
         request_id = _request_id_for(body.client_request_id)
         existing = [r for r in _sample_org_request_rows if r["Request ID"] == request_id]
         if body.client_request_id and existing:
             if not _same_request(existing, body):
                 raise _client_id_conflict()
-            return {"request_id": request_id, "status": "Under Review", "message": "USE_SAMPLE_DATA mode."}
+            return {"request_id": request_id, "status": "Under Review", "message": "Kept in memory only."}
         ts = datetime.now(timezone.utc).isoformat()
         for item, flag in zip(body.items, flags):
             _sample_org_request_rows.append({
@@ -1043,7 +1164,7 @@ def submit_org_request(body: OrgRequestBody, tasks: BackgroundTasks, request: Re
                 "Status": "Under Review", "Timestamp": ts, "Review Flag": "TRUE" if flag else "FALSE",
             })
         _queue_submit_emails(tasks, body, request_id, flagged, client_ip)
-        return {"request_id": request_id, "status": "Under Review", "message": "USE_SAMPLE_DATA mode."}
+        return {"request_id": request_id, "status": "Under Review", "message": "Kept in memory only."}
 
     request_id = _request_id_for(body.client_request_id)
     ts = datetime.now(timezone.utc).isoformat()
@@ -1106,7 +1227,7 @@ async def update_org_request_status(request_id: str, body: StatusUpdateBody, tas
         _inventory_cache.clear()
         return {"request_id": request_id, "status": body.status}
 
-    if _use_sample_data():
+    if _requests_in_memory():
         rows = [r for r in _sample_org_request_rows if r.get("Request ID", "").strip() == request_id]
         if not rows:
             raise HTTPException(status_code=404, detail=f"Request ID '{request_id}' not found.")
@@ -1193,7 +1314,7 @@ async def inventory_availability(request: Request):
             org_requests = db.get_requests()
         except Exception:
             pass
-    elif _use_sample_data():
+    elif _requests_in_memory():
         org_requests = list(_sample_org_request_rows)
     else:
         try:
@@ -1313,7 +1434,7 @@ async def list_org_requests(request: Request, response: Response, email: Optiona
     if db.enabled():
         return mine(db.get_requests())
 
-    if _use_sample_data():
+    if _requests_in_memory():
         return mine(list(_sample_org_request_rows))
 
     spreadsheet = _open_requests_spreadsheet()

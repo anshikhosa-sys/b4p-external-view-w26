@@ -1,15 +1,14 @@
 import Icon from './Icons';
 import { useEffect, useRef, useState } from 'react';
 
+// Signed in: the person icon opens a small menu (who is signed in, My requests, Sign out).
 function AccountMenu({ account, onSignOut }) {
   const ref = useRef(null);
   return (
     <details className="acct" ref={ref}>
-      <summary className="acct__btn" aria-label={`${account.org}, account menu`}>
-        <span className="acct__initial" aria-hidden="true">{account.org.trim().charAt(0).toUpperCase()}</span>
-        <span className="acct__org">{account.org}</span>
-        <span className="acct__label">Account</span>
-        <span className="visually-hidden">, account menu</span>
+      <summary className="header__icon-btn acct__btn" aria-label={`Account: ${account.org}`}>
+        <Icon name="user" size={26} />
+        <span className="header__icon-label">Account</span>
       </summary>
       <div className="acct__menu">
         <p className="acct__who">
@@ -24,7 +23,50 @@ function AccountMenu({ account, onSignOut }) {
   );
 }
 
-export default function Header({ view, lineCount, units = 0, onOpenSlip, onOpenCategories, onHome, siteName, account, onSignOut, authPage, showSignIn, contactEmail }) {
+// The one supply search, in the header on every page. Results show as you type; the button
+// (and Enter) also takes you to the results from any page.
+function HeaderSearch({ value, onChange, onSubmit }) {
+  return (
+    <form
+      className="hsearch"
+      role="search"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+        e.currentTarget.querySelector('input').blur();
+      }}
+    >
+      <label htmlFor="supply-search" className="visually-hidden">What supplies do you need?</label>
+      <input
+        id="supply-search"
+        className="hsearch__input"
+        type="search"
+        autoComplete="off"
+        spellCheck="false"
+        enterKeyHint="search"
+        placeholder="What supplies do you need?"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && value) {
+            e.preventDefault();
+            onChange('');
+          }
+        }}
+      />
+      <button type="submit" className="hsearch__btn" aria-label="Search">
+        <Icon name="search" size={22} />
+      </button>
+    </form>
+  );
+}
+
+// One row, left to right: logo (home), Request supplies, Guide, the search bar, Account, Your list.
+// Phones: logo, Account and Your list on top; the search below; then Request supplies and Guide.
+export default function Header({
+  view, lineCount, units = 0, onOpenSlip, onOpenCategories, onHome, account, onSignOut, authPage, showSignIn,
+  query, onQuery, onSearch,
+}) {
   // Counts up each time the list grows (a new supply, or more of one), to replay the animation.
   const [bump, setBump] = useState(0);
   const lastUnits = useRef(units);
@@ -33,64 +75,56 @@ export default function Header({ view, lineCount, units = 0, onOpenSlip, onOpenC
     lastUnits.current = units;
   }, [units]);
 
+  const listName = lineCount ? `Your list, ${lineCount} ${lineCount === 1 ? 'supply' : 'supplies'}` : 'Your list, empty';
+
   return (
     <header className="header">
       <div className="header__inner">
-        <a className="header__brand" href="#/" onClick={onHome} aria-label={`${siteName}, home`}>
-          {/* Inlined into the CSS as a data: URI, so the page makes no image requests. */}
-          <span className="header__logo" role="img" aria-label="Blueprints for Pangaea" />
-          <span className="header__name">
-            <span className="header__name-long">{siteName}</span>
-            <span className="header__name-short">Supply Requests</span>
-          </span>
+        {/* The logo alone is the way home. Inlined into the CSS as a data: URI, so the page makes no image requests. */}
+        <a className="header__brand" href="#/" onClick={onHome} aria-label="Blueprints for Pangaea, home">
+          <span className="header__logo" aria-hidden="true" />
         </a>
-        {!authPage && onOpenCategories && (
-          <button type="button" className="header__cats btn btn--quiet" onClick={onOpenCategories}>
-            <Icon name="list" size={18} /> <span className="header__cats-label">Categories</span>
-          </button>
-        )}
-        <nav className="header__nav" aria-label="Main">
-          <a href="#/how-it-works" className="header__link header__link--help" aria-current={view === 'guide' ? 'page' : undefined}>
-            <span className="header__help-long">How it works</span><span className="header__help-short">Guide</span>
+
+        <nav className="header__main" aria-label="Main">
+          <a className="btn btn--primary header__request" href="#/supplies" onClick={onHome}
+            aria-current={view === 'catalog' ? 'page' : undefined}>
+            Request supplies
           </a>
-          {(account || !showSignIn) && (
-            <a href="#/requests" className="header__link header__link--requests" aria-current={view === 'requests' ? 'page' : undefined}>
-              My requests
+          <a href="#/guide" className="header__guide" aria-current={view === 'guide' ? 'page' : undefined}>Guide</a>
+          {!authPage && onOpenCategories && (
+            <button type="button" className="header__cats" onClick={onOpenCategories}>
+              <Icon name="list" size={18} /> <span className="header__cats-label">Categories</span>
+            </button>
+          )}
+        </nav>
+
+        {!authPage && <HeaderSearch value={query} onChange={onQuery} onSubmit={onSearch} />}
+
+        <div className="header__end">
+          {account ? (
+            <AccountMenu account={account} onSignOut={onSignOut} />
+          ) : showSignIn && (
+            <a href="#/signin" className="header__icon-btn" aria-label="Account: sign in"
+              aria-current={view === 'signin' ? 'page' : undefined}>
+              <Icon name="user" size={26} />
+              <span className="header__icon-label">Account</span>
             </a>
           )}
-          {/* One click opens an email to the team, already addressed. */}
-          <a
-            href={`mailto:${contactEmail}?subject=${encodeURIComponent('Help with a supply request')}`}
-            className="header__email"
-            aria-label={`Get help: email ${contactEmail}`}
-          >
-            <Icon name="mail" size={18} />
-            <span className="header__help-long">Email for help</span><span className="header__help-short">Help</span>
-          </a>
-          {!authPage && (lineCount ? (
-            <button type="button" className="header__slip" onClick={onOpenSlip}>
+          {!authPage && (
+            <button type="button" className={`header__icon-btn header__slip${lineCount ? '' : ' header__slip--empty'}`}
+              onClick={onOpenSlip} aria-label={listName}>
               {/* Restarted (new key) each time something is added: a ring spreads out and the count pops. */}
               {bump > 0 && <span key={`ring-${bump}`} className="header__slip-ring" aria-hidden="true" />}
-              <Icon name="slip" size={18} />
-              <span className="header__slip-label">Your list</span>{' '}
-              <span key={`n-${bump}`} className={`num${bump ? ' header__slip-n' : ''}`}>({lineCount})</span>
-              <span className="visually-hidden"> {lineCount === 1 ? 'supply' : 'supplies'}</span>
+              <span className="header__slip-icon" aria-hidden="true">
+                <Icon name="slip" size={26} />
+                {lineCount > 0 && (
+                  <span key={`n-${bump}`} className={`header__badge num${bump ? ' header__slip-n' : ''}`}>{lineCount}</span>
+                )}
+              </span>
+              <span className="header__icon-label">Your list</span>
             </button>
-          ) : (
-            // Still opens the (empty) list, but quietly: there is nothing to act on yet.
-            <button type="button" className="header__slip header__slip--empty" onClick={onOpenSlip}>
-              <Icon name="slip" size={18} /> Your list is empty
-            </button>
-          ))}
-        </nav>
-        {/* The clinic's profile (or Sign in) sits alone at the far right, like the title on the far left. */}
-        {account ? (
-          <div className="header__profile"><AccountMenu account={account} onSignOut={onSignOut} /></div>
-        ) : showSignIn && !authPage && (
-          <div className="header__profile">
-            <a href="#/signin" className="header__link" aria-current={view === 'signin' ? 'page' : undefined}>Sign in</a>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </header>
   );

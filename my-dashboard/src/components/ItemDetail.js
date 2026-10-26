@@ -1,4 +1,5 @@
-import { badgesFor, daysUntil, formatExpiry, stockLabel } from '../inventory';
+import { useState } from 'react';
+import { badgesFor, daysUntil, formatExpiry, photoPage, photoSrc, stockLabel } from '../inventory';
 import Badges from './Badges';
 import Dialog from './Dialog';
 import Icon from './Icons';
@@ -8,6 +9,35 @@ import { ProductIcon } from '../catalogIcons';
 // Notes often repeat across lots; show each distinct note once.
 function notesOf(product) {
   return [...new Set(product.lots.map((l) => l.notes).filter(Boolean))];
+}
+
+// The photo of the batch that was opened, or else the first batch that has one.
+function photoOf(product, row) {
+  const opened = product.lots.find((l) => l.id === row);
+  if (opened && opened.photoId) return opened.photoId;
+  const any = product.lots.find((l) => l.photoId);
+  return any ? any.photoId : '';
+}
+
+// A fixed 4:3 frame, so the panel doesn't jump while the photo loads. Drive files that aren't
+// shared publicly fail to load; then the drawing is shown instead.
+function Photo({ id, name, icon }) {
+  const [failed, setFailed] = useState(false);
+  if (!id || failed) return <div className="detail__art"><ProductIcon type={icon} size={96} /></div>;
+  return (
+    <a className="detail__photo" href={photoPage(id)} target="_blank" rel="noopener noreferrer" title="Open the full-size photo">
+      <img
+        key={id}
+        src={photoSrc(id)}
+        alt={name}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+      />
+      <span className="visually-hidden"> (opens the full-size photo in a new tab)</span>
+    </a>
+  );
 }
 
 function expiryText(item) {
@@ -20,7 +50,7 @@ function expiryText(item) {
   return date;
 }
 
-export default function ItemDetail({ item, onHold, quantity, onQuantity, onClose, missing }) {
+export default function ItemDetail({ item, row, onHold, quantity, onQuantity, onClose, missing }) {
   return (
     <Dialog onClose={onClose} labelledBy="item-detail-title" variant="side" className="detail">
       <div className="detail__bar">
@@ -35,7 +65,7 @@ export default function ItemDetail({ item, onHold, quantity, onQuantity, onClose
         </div>
       ) : (
         <div className="detail__content">
-          <div className="detail__art"><ProductIcon type={item.icon} size={96} /></div>
+          <Photo key={item.id} id={photoOf(item, row)} name={item.name} icon={item.icon} />
           <p className="detail__sub">{item.subcategory}, {item.type}</p>
           <h2 id="item-detail-title" className="detail__title">{item.name}</h2>
           <p className="detail__stock num">{stockLabel(item.quantity)}</p>

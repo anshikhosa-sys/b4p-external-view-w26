@@ -112,7 +112,7 @@ function AuthFrame({ title, lede, children, contactEmail, onFill }) {
       </section>
       <p className="auth__foot">
         Accounts are for Blueprints partner clinics. Need one? Email <a href={`mailto:${contactEmail}`}>{contactEmail}</a>.<br />
-        <a href="#/how-it-works">How does requesting work?</a>
+        <a href="#/guide">Read the step-by-step guide</a>
       </p>
       <MockNotice onFill={onFill} />
     </div>

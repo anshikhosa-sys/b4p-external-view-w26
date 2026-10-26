@@ -29,7 +29,7 @@ def _email():
 
 def _name(c):
     """An item name that exists in the active data source."""
-    if c.get("/health").json()["source"] == "sheet":
+    if c.get("/health").json()["source"] == "sample":
         return "Gauze"
     return next(r["Name"] for r in c.get("/api/supplies").json() if (r["Name"] or "").strip())
 
@@ -178,7 +178,7 @@ def test_client_request_id_shape_is_validated(client, cid):
 def test_health_shape(client):
     body = client.get("/health").json()
     assert set(body) == {"source", "ok", "email"}
-    assert body["source"] in ("sheet", "postgres") and body["ok"] is True
+    assert body["source"] in ("sample", "sheet-public", "sheet", "postgres") and body["ok"] is True
     assert body["email"] is None  # every provider env var is blanked in tests
 
 

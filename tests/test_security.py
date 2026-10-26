@@ -16,7 +16,7 @@ def _post(c, items=None, email=None, org="Org", **kw):
 
 def _name(c):
     """An inventory item name that is safe to request in either mode."""
-    return "Gauze" if c.get("/health").json()["source"] == "sheet" else next(
+    return "Gauze" if c.get("/health").json()["source"] == "sample" else next(
         r["Name"] for r in c.get("/api/supplies").json() if r["Name"])
 
 

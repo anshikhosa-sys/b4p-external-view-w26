@@ -161,6 +161,21 @@ export function searchTerms(query) {
 
 const hasTerm = (text, { t, alt }) => text.includes(t) || (alt !== null && text.includes(alt));
 
+// A Google Drive file ID from a sheet photo link (/file/d/ID/view, open?id=ID, uc?id=ID).
+// Only drive.google.com and docs.google.com links count; anything else gives ''.
+const DRIVE_ID = /^[A-Za-z0-9_-]{20,100}$/;
+export function driveFileId(url) {
+  if (typeof url !== 'string') return '';
+  const m = /^https:\/\/(drive\.google\.com|docs\.google\.com)\/(.*)$/.exec(url.trim());
+  if (!m) return '';
+  const found = /^file\/d\/([^/?#]+)/.exec(m[2]) || /[?&]id=([^&#]+)/.exec(m[2]);
+  return found && DRIVE_ID.test(found[1]) ? found[1] : '';
+}
+
+// The photo itself (Drive's thumbnail service, up to 1000px wide), and the page that shows it full size.
+export const photoSrc = (id) => `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1000`;
+export const photoPage = (id) => `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`;
+
 export function normalizeItem(raw, today = new Date()) {
   const name = str(raw['Name']);
   const general = str(raw['General']);
@@ -170,7 +185,7 @@ export function normalizeItem(raw, today = new Date()) {
   const item = {
     id: Number(raw['_sheet_row']),
     name: displayName(usableName) || capitalize(general) || fromNotes || 'Unnamed supply',
-    // Nothing to identify it by now that photos are gone: kept out of the catalog.
+    // Nothing to identify it by: kept out of the catalog.
     unlabelled: !usableName && !general && !fromNotes,
     rawName: name,
     general: capitalize(general),
@@ -185,6 +200,7 @@ export function normalizeItem(raw, today = new Date()) {
     pallet: str(raw['Pallet Number']),
     box: str(raw['Box Number']),
     needsReview: str(raw['Review']).toLowerCase() === 'yes',
+    photoId: driveFileId(raw['Image URL']),
   };
   item.requestName = requestName(item, usableName);
   // What the supply itself says (name, maker, lot...) ranks above matches on its category name alone.
