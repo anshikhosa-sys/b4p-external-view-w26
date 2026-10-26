@@ -17,8 +17,8 @@ import sent from '../assets/guide/steps/sent.jpg';
 const B = ({ children }) => <strong className="guide__label">{children}</strong>;
 
 const SHOT = {
-  signIn: { src: signIn, width: 504, height: 669, narrow: true, alt: 'The Sign in page with the Email and Password boxes filled in, and a red box around the blue Sign in button.' },
-  categories: { src: categories, width: 1280, height: 860, alt: 'The supplies page: the grey search box at the top, the list of categories on the left, and the category boxes. A red box is around the Gloves box.' },
+  signIn: { src: signIn, width: 504, height: 694, narrow: true, alt: 'The Sign in page with the Email and Password boxes filled in, and a red box around the blue Sign in button.' },
+  categories: { src: categories, width: 1280, height: 860, alt: 'The supplies page with the Categories menu open, listing each category and how many supplies it has. A red box is around the Categories button.' },
   photo: { src: photo, width: 480, height: 860, narrow: true, alt: 'The panel for one supply: a photo of the package of SensiCare exam gloves with a red box around it, 79 in stock, and the + Add to list button.' },
   add: { src: add, width: 480, height: 860, narrow: true, alt: 'The same panel with a red box around the blue + Add to list button.' },
   howMany: { src: howMany, width: 480, height: 860, narrow: true, alt: 'After adding: the button has changed to a minus sign, the number 1 and a plus sign, with a red box around them.' },
@@ -37,7 +37,7 @@ const STEPS = [
   },
   {
     title: 'Find a supply',
-    text: <>Click <B>Request supplies</B> at the top and pick a category, like <b>Gloves</b>. Or type what you need in the grey search box at the top.</>,
+    text: <>Click <B>Request supplies</B> at the top, then click <B>Categories</B> and pick one, like <b>Gloves</b>. Or type what you need in the grey search box at the top.</>,
     shot: SHOT.categories,
   },
   {

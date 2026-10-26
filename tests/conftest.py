@@ -6,7 +6,7 @@ for _var in ("RESEND_API_KEY", "BREVO_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWOR
              "EMAIL_FROM", "EMAIL_REPLY_TO", "HQ_EMAIL", "EMAIL_DAILY_LIMIT", "VERCEL", "VERCEL_ENV",
              "GOOGLE_CREDENTIALS_JSON", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_SHEET_ID",
              "REQUESTS_SHEET_ID", "PUBLIC_SHEET_READ", "INVENTORY_WORKSHEET_GID",
-             "INVENTORY_WORKSHEET_TITLE"):
+             "INVENTORY_WORKSHEET_TITLE", "MEMBER_ROSTER_PATH", "ROSTER_SHEET_ID", "ROSTER_TAB"):
     os.environ[_var] = ""  # set (empty) before main is imported, so load_dotenv cannot refill them
 
 import psycopg
@@ -55,6 +55,8 @@ def no_email(monkeypatch):
 
     import main
     main._inventory_cache.clear()  # the 60s sheet-inventory cache would leak between tests
+    from app import team
+    team.reset()  # roster cache, codes and team sessions are in memory too
     email_svc.reset_limits()  # the caps are in memory and would leak between tests
     sent = []  # (to, subject, html) per email
 

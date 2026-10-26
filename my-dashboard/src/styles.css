@@ -340,46 +340,12 @@ button:disabled {
   text-decoration: none;
 }
 
-.header__name {
-  display: flex;
-  align-items: center;
-  height: 24px;
-  padding-left: 12px;
-  border-left: 1px solid var(--line);
-  font-size: var(--text-md);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.header__name-short {
-  display: none;
-}
-
-@media (max-width: 1179px) {
-  .header__name-long {
-    display: none;
-  }
-
-  .header__name-short {
-    display: inline;
-  }
-}
-
 .header__logo {
   display: block;
   flex: none;
   width: 57px; /* 334:196 artwork at 34px tall */
   height: 34px;
   background: url('./assets/b4p-logo.jpg') center / contain no-repeat;
-}
-
-.header__cats {
-  display: none;
-}
-
-.header__nav {
-  display: flex;
-  margin-left: auto;
 }
 
 .header__link {
@@ -444,19 +410,6 @@ button:disabled {
     grid-column: 2;
     grid-row: 1;
   }
-
-  .shop__tree {
-    grid-column: 1;
-    grid-row: 1;
-  }
-}
-
-.shop__tree {
-  position: sticky;
-  top: calc(var(--header-h) + 20px);
-  max-height: calc(100vh - var(--header-h) - 40px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .stale {
@@ -483,58 +436,6 @@ button:disabled {
   border-left: 3px solid var(--blue);
   background: var(--blue-50);
   font-size: var(--text-sm);
-}
-
-/* ── Category tree ────────────────────────────────────────────────────── */
-
-.tree {
-  font-size: var(--text-sm);
-  font-weight: var(--w-text);
-}
-
-.tree__link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 36px;
-  padding: 8px 12px;
-  border-radius: var(--radius);
-  color: var(--ink);
-  line-height: 1.3;
-}
-
-.tree__name {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.tree__link:hover {
-  background: var(--tint);
-  text-decoration: none;
-}
-
-.tree__link[aria-current='page'] {
-  background: var(--blue-50);
-  color: var(--blue);
-  font-weight: 600;
-}
-
-.tree__link--all {
-  margin-bottom: 8px;
-  font-weight: 600;
-}
-
-.tree__count {
-  flex: none;
-  color: var(--ink-2);
-  font-size: var(--text-xs);
-}
-
-.tree__link[aria-current='page'] .tree__count {
-  color: var(--blue);
 }
 
 .landing__grid {
@@ -1895,13 +1796,6 @@ button:disabled {
 
 /* ── Small screens ────────────────────────────────────────────────────── */
 
-@media (max-width: 1279px) {
-  .header__cats {
-    display: inline-flex;
-    padding: 0 12px;
-  }
-}
-
 @media (max-width: 899px) {
   .header__inner {
     flex-wrap: wrap;
@@ -1926,10 +1820,6 @@ button:disabled {
   .header__logo {
     width: 54px;
     height: 32px;
-  }
-
-  .header__name {
-    display: none;
   }
 
   .header__slip-label {
@@ -2026,18 +1916,6 @@ button:disabled {
 @media (max-width: 480px) {
   .header__inner {
     gap: 8px;
-  }
-
-  .header__cats {
-    padding: 0 12px;
-  }
-
-  .header__cats-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
   }
 }
 
@@ -2596,12 +2474,6 @@ button:disabled {
   }
 }
 
-@media (max-width: 760px) {
-  .header__link--requests {
-    display: none; /* in the account menu instead */
-  }
-}
-
 .sending-as dl div {
   grid-template-columns: 120px 1fr;
 }
@@ -2644,11 +2516,6 @@ h3 {
   border-bottom-color: var(--line);
 }
 
-.header__name {
-  color: var(--heading);
-  font-weight: 700;
-}
-
 .header__slip {
   border-color: var(--navy);
   background: var(--navy);
@@ -2667,26 +2534,6 @@ h3 {
   border-top: 0;
   background: var(--tint);
   color: var(--ink-2);
-}
-
-/* ── How to request supplies (guide) ─────────────────────────────────── */
-
-.header__nav {
-  gap: 24px;
-}
-
-.header__help-short {
-  display: none;
-}
-
-@media (max-width: 760px) {
-  .header__help-long {
-    display: none;
-  }
-
-  .header__help-short {
-    display: inline;
-  }
 }
 
 .landing__guide {
@@ -2716,13 +2563,6 @@ h3 {
   padding: 16px 0 40px;
 }
 
-.guide__kicker {
-  margin-bottom: 8px;
-  color: var(--blue);
-  font-size: var(--text-sm);
-  font-weight: 700;
-}
-
 .guide__title {
   color: var(--heading);
   font-size: 44px;
@@ -2747,101 +2587,6 @@ h3 {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 24px;
-}
-
-.guide__body {
-  font-size: 17px;
-  line-height: 1.6;
-}
-
-.guide__step {
-  padding-bottom: 40px;
-  scroll-margin-top: calc(var(--header-h) + 16px);
-}
-
-.guide__step + .guide__step {
-  padding-top: 40px;
-  border-top: 1px solid var(--line);
-}
-
-.guide__step-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  color: var(--heading);
-  font-size: 26px;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.guide__n {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius);
-  background: var(--navy);
-  color: #fff;
-  font-size: 18px;
-}
-
-.guide__body p + p,
-.guide__body p + ul,
-.guide__body p + ol,
-.guide__body ul + p,
-.guide__body ol + p,
-.guide__body figure + p,
-.guide__body p + dl {
-  margin-top: 12px;
-}
-
-.guide__list {
-  display: grid;
-  gap: 10px;
-  margin-top: 8px;
-  padding-left: 20px;
-  list-style: disc;
-}
-
-.guide__note,
-.guide__tip {
-  margin-top: 16px;
-  padding: 12px 16px;
-  font-size: 16px;
-}
-
-.guide__note {
-  background: var(--tint);
-}
-
-.guide__tip {
-  border-left: 3px solid var(--blue-btn);
-  background: #fff;
-}
-
-.guide__pic {
-  margin: 20px 0;
-}
-
-.guide__pic-frame {
-  display: flex;
-  justify-content: flex-start;
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #fff;
-  font-size: var(--text-md);
-  line-height: 1.5;
-  pointer-events: none;
-}
-
-.guide__pic figcaption {
-  margin-top: 8px;
-  color: var(--ink-2);
-  font-size: var(--text-sm);
 }
 
 .mini-card {
@@ -2964,89 +2709,6 @@ h3 {
   padding-top: 2px;
 }
 
-.guide__faq div {
-  padding: 16px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.guide__faq dt {
-  margin-bottom: 4px;
-  color: var(--heading);
-  font-weight: 700;
-}
-
-.guide__cards {
-  display: grid;
-  gap: 24px;
-  padding-top: 32px;
-  border-top: 1px solid var(--line);
-}
-
-@media (min-width: 900px) {
-  .guide__cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.guide__card {
-  display: flex;
-  flex-direction: column;
-  padding: 24px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: #fff;
-  font-size: 17px;
-  line-height: 1.55;
-}
-
-.guide__card .guide__step-title {
-  font-size: 22px;
-}
-
-.guide__card .guide__shot {
-  margin: 16px 0 0;
-}
-
-.guide__questions {
-  max-width: 760px;
-  margin: 48px 0 32px;
-}
-
-.guide__questions-title {
-  margin-bottom: 12px;
-  color: var(--heading);
-  font-size: 26px;
-  font-weight: 800;
-}
-
-.guide__q {
-  border-bottom: 1px solid var(--line);
-}
-
-.guide__q:first-of-type {
-  border-top: 1px solid var(--line);
-}
-
-.guide__q > summary {
-  display: flex;
-  align-items: center;
-  min-height: var(--target);
-  padding: 12px 0;
-  color: var(--heading);
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.guide__a {
-  padding: 0 0 20px;
-  font-size: 17px;
-  line-height: 1.6;
-}
-
-.guide__a > * + * {
-  margin-top: 12px;
-}
-
 .guide__end {
   display: flex;
   flex-wrap: wrap;
@@ -3071,10 +2733,6 @@ h3 {
 
   .guide__lede {
     font-size: 17px;
-  }
-
-  .guide__step-title {
-    font-size: 22px;
   }
 
   .guide__status div,
@@ -3276,10 +2934,6 @@ h3 {
   .find__row {
     flex-direction: column;
   }
-}
-
-.landing__browse {
-  margin-top: 32px;
 }
 
 /* The search box sits above every supply page, under the step bar. */
@@ -3564,10 +3218,6 @@ h3 {
   background: #fff;
 }
 
-.guide__shot--narrow img {
-  max-width: min(100%, 420px);
-}
-
 .guide__shot figcaption {
   margin-top: 8px;
   color: var(--ink);
@@ -3603,51 +3253,8 @@ h3 {
   color: var(--ink);
 }
 
-/* Help at the top of every page: opens an email to the team. */
-.header__email {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: var(--target);
-  padding: 0 14px;
-  border: 1px solid var(--blue);
-  border-radius: var(--radius);
-  background: #fff;
-  color: var(--blue);
-  font-weight: var(--w-strong);
-  white-space: nowrap;
-}
-
-.header__email:hover {
-  background: var(--blue-50);
-  text-decoration: none;
-}
-
-@media (max-width: 760px) {
-  .header__email {
-    padding: 0 10px;
-  }
-}
-
 /* Mid-size screens: shorter header labels so everything fits on one line.
    (My requests is also in the account menu.) */
-@media (max-width: 1179px) {
-  .header__help-long {
-    display: none;
-  }
-
-  .header__help-short {
-    display: inline;
-  }
-
-  .header__link--requests {
-    display: none;
-  }
-
-  .header__nav {
-    gap: 16px;
-  }
-}
 
 /* Under 1000px the account button is just the clinic's initial (its name is read out). */
 @media (max-width: 999px) {
@@ -3662,35 +3269,8 @@ h3 {
   align-items: center;
 }
 
-.header__profile {
-  display: flex;
-  flex: none;
-  align-items: center;
-  margin-left: 16px;
-  padding-left: 24px;
-  border-left: 1px solid var(--line);
-}
-
-@media (max-width: 760px) {
-  .header__profile {
-    margin-left: 0;
-    padding-left: 12px;
-  }
-}
-
 /* Phones: one header row. The guide is linked from the home page and Help, so its
    header link steps aside; the profile loses its divider. */
-@media (max-width: 480px) {
-  .header__link--help {
-    display: none;
-  }
-
-  .header__profile {
-    padding-left: 0;
-    border-left: 0;
-  }
-}
-
 
 /* ── Home page and supply pages, second pass ─────────────────────────────
    Flat like the Blueprints site: rules and spacing separate things, not
@@ -3745,25 +3325,6 @@ h3 {
   text-underline-offset: 3px;
 }
 
-.guide__hero-shot {
-  margin: 8px 0 0;
-}
-
-.guide__hero-shot img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: #fff;
-}
-
-.guide__hero-shot figcaption {
-  margin-top: 10px;
-  color: var(--ink-2);
-  font-size: var(--text-sm);
-}
-
 /* The steps: big number, words, picture. One row each, divided by rules. */
 .guide__steps-title,
 .guide__questions-title {
@@ -3772,78 +3333,6 @@ h3 {
   font-size: 30px;
   font-weight: 800;
   letter-spacing: -0.015em;
-}
-
-.guide__cards {
-  display: block;
-  padding: 0;
-  border: 0;
-}
-
-.guide__card {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 4fr) minmax(0, 5fr);
-  align-items: start;
-  gap: 8px 32px;
-  padding: 32px 0;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  background: none;
-  font-size: 18px;
-}
-
-.guide__card:last-child {
-  border-bottom: 0;
-}
-
-.guide__n {
-  display: block;
-  width: auto;
-  height: auto;
-  border-radius: 0;
-  background: none;
-  color: var(--blue-btn);
-  font-size: 56px;
-  font-weight: 800;
-  line-height: 0.9;
-}
-
-.guide__card .guide__step-title {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 24px;
-}
-
-.guide__card .guide__shot {
-  margin: 0 0 12px;
-}
-
-.guide__questions {
-  margin-top: 16px;
-}
-
-.guide__q > summary {
-  justify-content: space-between;
-  gap: 16px;
-  list-style: none;
-}
-
-.guide__q > summary::-webkit-details-marker {
-  display: none;
-}
-
-.guide__q > summary::after {
-  content: '+';
-  flex: none;
-  color: var(--blue);
-  font-size: 26px;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.guide__q[open] > summary::after {
-  content: '−';
 }
 
 /* The end: a plain line and the button, no coloured band. */
@@ -3873,26 +3362,6 @@ h3 {
 
   .guide__lede {
     font-size: 18px;
-  }
-
-  .guide__card {
-    grid-template-columns: 44px minmax(0, 1fr);
-    gap: 4px 16px;
-    padding: 24px 0;
-  }
-
-  .guide__n {
-    font-size: 40px;
-  }
-
-  .guide__card-pics {
-    grid-column: 1 / -1;
-    margin-top: 12px;
-  }
-
-  .guide__steps-title,
-  .guide__questions-title {
-    font-size: 24px;
   }
 }
 
@@ -4191,10 +3660,6 @@ h3 {
   font-size: 17px;
 }
 
-.guide__steps-title {
-  margin-top: 56px;
-}
-
 @media (max-width: 899px) {
   .guide__title {
     font-size: 36px;
@@ -4289,36 +3754,13 @@ h3 {
     font-size: var(--text-sm);
   }
 
-  .header__nav {
-    gap: 6px;
-  }
-
-  .header__email .header__help-short {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-  }
-
-  .header__email {
-    padding: 0 10px;
-  }
-
   .header__slip {
     padding: 0 8px;
-  }
-
-  .header__profile .header__link {
-    font-size: var(--text-sm);
   }
 }
 
 /* Phones: Help steps aside (it's also in the footer) and "Your list" shows as its icon and count. */
 @media (max-width: 480px) {
-  .header__email {
-    display: none;
-  }
 
   .header__slip-label {
     position: absolute;
@@ -4329,10 +3771,6 @@ h3 {
   }
 
   .header__request {
-    padding: 0 10px;
-  }
-
-  .header__cats {
     padding: 0 10px;
   }
 }
@@ -4347,35 +3785,10 @@ h3 {
   height: 480px;
 }
 
-.shelf__window--moving .shelf__grid {
-  animation: shelf-up calc(var(--rows) * 7s) linear infinite;
-}
-
-.shelf__window:hover .shelf__grid,
-.shelf__window:focus-within .shelf__grid,
-.shelf__window.is-paused .shelf__grid {
-  animation-play-state: paused;
-}
-
-/* Each copy is --rows rows of tiles plus the gaps between them, so moving up by exactly half
-   the list (one copy plus one gap) lands on the same picture it started from. */
-.shelf__window--moving .shelf__grid {
-  gap: 12px;
-}
-
-@keyframes shelf-up {
-  from { transform: translateY(0); }
-  to { transform: translateY(calc(-50% - 6px)); }
-}
-
 /* Reduced motion: no sliding; the window scrolls by hand instead. */
 @media (prefers-reduced-motion: reduce) {
   .shelf__window--moving {
     overflow-y: auto;
-  }
-
-  .shelf__window--moving .shelf__grid {
-    animation: none;
   }
 
   .shelf__tile[aria-hidden='true'] {
@@ -4414,10 +3827,6 @@ h3 {
   background: #d5e2ff;
 }
 
-.header__break {
-  display: none;
-}
-
 /* Phones: two rows. Logo, Your list and Sign in on top; Request supplies, Guide (and
    Categories on supply pages) below, as wide buttons. */
 @media (max-width: 480px) {
@@ -4428,17 +3837,10 @@ h3 {
     padding-bottom: 10px;
   }
 
-  .header__nav {
-    display: contents;
-  }
-
   .header__brand { order: 1; }
   .header__slip { order: 2; margin-left: auto; }
-  .header__profile { order: 3; }
-  .header__break { display: block; order: 4; flex-basis: 100%; height: 0; }
   .header__request { order: 5; flex: 1 1 auto; justify-content: center; }
   .header__guide { order: 6; flex: 1 1 auto; justify-content: center; padding: 0 12px; }
-  .header__cats { order: 7; }
 }
 
 @media (max-width: 480px) {
@@ -4711,13 +4113,6 @@ h3 {
   }
 }
 
-@media (max-width: 480px) {
-  .header__cats {
-    min-width: 44px;
-    justify-content: center;
-  }
-}
-
 /* ── Step-by-step guide (#/guide) ────────────────────────────────────────
    Large type, one step per row: a big number, the words, then the picture. */
 
@@ -4741,13 +4136,6 @@ h3 {
   max-width: 40em;
   font-size: 20px;
 }
-
-
-
-
-
-
-
 
 .tutorial .guide__title:focus {
   outline: none;
@@ -4801,17 +4189,10 @@ h3 {
   background: #fff;
 }
 
-.tutorial .guide__shot--narrow img {
-  width: auto;
-  max-width: min(100%, 400px);
-}
-
 .tutorial .guide__status,
 .tutorial .guide__labels {
   margin-top: 10px;
 }
-
-
 
 @media (max-width: 760px) {
   .tutorial {
@@ -4821,7 +4202,6 @@ h3 {
   .tutorial .guide__title {
     font-size: 34px;
   }
-
 
   .tutorial__step {
     grid-template-columns: 40px minmax(0, 1fr);
@@ -4868,4 +4248,422 @@ h3 {
   padding-top: 24px;
   border-top: 1px solid var(--line);
   font-size: 19px;
+}
+
+/* ── Blueprints team dashboard (#/team) ────────────────────────────────── */
+
+.team {
+  max-width: 1200px;
+}
+
+.team__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+
+.team__tabs {
+  display: flex;
+  gap: 4px;
+  margin: 24px 0 8px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.team__tab {
+  min-height: var(--target);
+  padding: 0 18px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+}
+
+.team__tab:hover {
+  color: var(--blue);
+}
+
+.team__tab--on {
+  border-bottom-color: var(--navy);
+  color: var(--navy);
+}
+
+.team__section {
+  margin-top: 28px;
+}
+
+.team__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.team__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin: 12px 0 16px;
+}
+
+.team__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--target);
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.chip:hover {
+  border-color: var(--blue);
+}
+
+.chip--on {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: #fff;
+}
+
+.team__select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.team__select select {
+  min-height: var(--target);
+  min-width: 220px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
+}
+
+.team__scroll {
+  position: relative; /* keeps screen-reader-only labels inside the scroll box */
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.team-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.team-table th,
+.team-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.team-table thead th {
+  color: var(--ink);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.team-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.team-table .n {
+  text-align: right;
+}
+
+.team-table tbody th {
+  font-weight: 600;
+}
+
+.team__id {
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.team__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.team__items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 220px;
+}
+
+.team__status {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--tint);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.team__status--under-review,
+.team__status--waiting {
+  background: #fff4d6;
+  color: #6b4500;
+}
+
+.team__status--approved,
+.team__status--done {
+  background: #e8f3e6;
+  color: #2f5c2a;
+}
+
+.team__status--shipped,
+.team__status--delivered {
+  background: #e8efff;
+  color: #0035a2;
+}
+
+.team__status--denied,
+.team__status--cancelled {
+  background: #fdeaea;
+  color: #b42323;
+}
+
+.team__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.team__form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: start;
+  gap: 12px 16px;
+  margin-top: 12px;
+}
+
+.team__form .btn {
+  margin-top: 30px;
+  min-height: 46px;
+}
+
+.team__made {
+  margin-top: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.team__link {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.team__made-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.footer__team {
+  margin-top: 6px;
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 760px) {
+  .team__form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .team__form .btn {
+    margin-top: 0;
+  }
+
+  .team__select select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .team__select {
+    width: 100%;
+  }
+}
+
+/* Account and Your list stay at the right edge even when the search is hidden (sign-in pages). */
+.header__end {
+  margin-left: auto;
+}
+
+/* ── Categories menu (supply pages) ───────────────────────────────────── */
+
+.catmenu {
+  position: relative;
+  display: inline-block;
+  margin: 0 0 20px;
+}
+
+.catmenu__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 16px;
+  border: 2px solid var(--navy);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--navy);
+  font: inherit;
+  font-size: var(--text-md);
+}
+
+.catmenu__btn:hover {
+  background: var(--blue-50);
+}
+
+.catmenu__btn[aria-expanded='true'] .catmenu__caret {
+  transform: rotate(180deg);
+}
+
+.catmenu__current {
+  font-weight: 800;
+}
+
+.catmenu__list {
+  position: absolute;
+  z-index: 15;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  margin: 0;
+  padding: 6px 0;
+  overflow-y: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(0, 14, 63, 0.16);
+  list-style: none;
+}
+
+.catmenu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--target);
+  padding: 8px 16px;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.catmenu__item:hover,
+.catmenu__item:focus {
+  background: var(--blue-50);
+  color: var(--blue);
+  text-decoration: none;
+  outline: none;
+}
+
+.catmenu__item:focus-visible {
+  box-shadow: inset 0 0 0 3px var(--blue-hover);
+}
+
+.catmenu__item[aria-current='page'] {
+  color: var(--navy);
+  font-weight: 800;
+}
+
+.catmenu__count {
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+/* Phones: the button and its list take the full width. */
+@media (max-width: 760px) {
+  .catmenu {
+    display: block;
+  }
+
+  .catmenu__btn {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .catmenu__caret {
+    margin-left: auto;
+  }
+
+  .catmenu__list {
+    width: 100%;
+  }
+}
+
+/* The shelf scroller (Home.js) moves the grid with translate3d; keep it on its own layer. */
+.shelf__window--moving .shelf__grid {
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Photos fade in when they arrive instead of popping. */
+.shelf__tile img {
+  opacity: 0;
+  transition: opacity 0.35s ease-out;
+}
+
+.shelf__tile img.is-loaded {
+  opacity: 1;
+}
+
+/* While the list loads, grey tiles hold the shelf's space so nothing below moves. */
+.shelf__ghost {
+  display: block;
+  aspect-ratio: 1 / 1.25;
+  border-radius: var(--radius);
+  background: var(--tint);
+}
+
+/* Reserve room for the page so the footer doesn't jump while a page's code loads. */
+.main {
+  min-height: calc(100vh - 160px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shelf__tile img {
+    transition: none;
+  }
 }

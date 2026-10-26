@@ -55,7 +55,7 @@ function messageFor(status, body) {
 
 // `cache: 'no-cache'` makes the browser revalidate (ETag -> usually a tiny 304)
 // instead of serving its up-to-60s-old copy; use it after user actions.
-export async function apiRequest(path, { method = 'GET', body, timeout = DEFAULT_TIMEOUT, onSlow, cache } = {}) {
+export async function apiRequest(path, { method = 'GET', body, headers, timeout = DEFAULT_TIMEOUT, onSlow, cache } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   const slowTimer = onSlow ? setTimeout(onSlow, SLOW_AFTER) : null;
@@ -63,7 +63,7 @@ export async function apiRequest(path, { method = 'GET', body, timeout = DEFAULT
   try {
     res = await fetch(`${API_BASE}${path}`, {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      headers: body || headers ? { ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers } : undefined,
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
       ...(cache ? { cache } : {}),
@@ -91,3 +91,15 @@ export const getSupplies = (opts) => apiRequest('/api/supplies', opts);
 export const getAvailability = (opts) => apiRequest('/inventory/availability', opts);
 export const getMyRequests = (email, opts) => apiRequest(`/requests?email=${encodeURIComponent(email)}`, opts);
 export const submitRequest = (payload, opts) => apiRequest('/requests', { ...opts, method: 'POST', body: payload });
+
+// Blueprints team (preview): sign in with a roster email and a 6-digit code, then every HQ call
+// sends the session in X-Team-Session (checked by require_hq on the server).
+const team = (session) => ({ 'X-Team-Session': session });
+export const teamSignIn = (email) => apiRequest('/api/team/sign-in', { method: 'POST', body: { email } });
+export const teamVerify = (email, code) => apiRequest('/api/team/verify', { method: 'POST', body: { email, code } });
+export const teamMe = (session) => apiRequest('/api/team/me', { headers: team(session), cache: 'no-store' });
+export const teamSignOut = (session) => apiRequest('/api/team/sign-out', { method: 'POST', headers: team(session) });
+export const getAllRequests = (session, opts) =>
+  apiRequest('/requests', { ...opts, headers: team(session), cache: 'no-store' });
+export const setRequestStatus = (id, status, session) =>
+  apiRequest(`/requests/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: { status }, headers: team(session) });

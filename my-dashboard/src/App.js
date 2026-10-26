@@ -2,13 +2,12 @@ import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useLayoutEffe
 import { ApiError, getAvailability, getSupplies, submitRequest } from './api';
 import { iconFor, ProductIconSprite, typeLabelFor } from './catalogIcons';
 import CategoryPage from './components/CategoryPage';
-import CategoryTree from './components/CategoryTree';
+import CategoryMenu from './components/CategoryMenu';
 import CheckoutForm from './components/CheckoutForm';
 import DataSource, { showDataSource } from './components/DataSource';
 import Confirmation from './components/Confirmation';
 import Dialog from './components/Dialog';
 import Header from './components/Header';
-import Icon from './components/Icons';
 import ItemDetail from './components/ItemDetail';
 import Landing from './components/Landing';
 import MyRequests from './components/MyRequests';
@@ -17,7 +16,7 @@ import RequestSlip from './components/RequestSlip';
 import { ForgotPassword, SignIn, Welcome } from './components/SignIn';
 import SearchResults from './components/SearchResults';
 import { EmptyState, ErrorState, SkeletonTable, WakingNotice } from './components/States';
-import { closeTo, navigate, useDebounced, useHashRoute, useMediaQuery } from './hooks';
+import { closeTo, navigate, useDebounced, useHashRoute } from './hooks';
 import {
   allocateFefo, applyAvailability, applyBaseFilters, buildCatalog, formatDateTime, groupByType, groupProducts,
   matchingTypes, normalizeInventory, rankByRelevance,
@@ -26,6 +25,7 @@ import {
 import { clearInventoryCache, readInventoryCache, writeInventoryCache } from './inventoryCache';
 import useCart, { MAX_LINES } from './useCart';
 import useAccount from './useAccount';
+import useTeam from './useTeam';
 import useOrg from './useOrg';
 import './styles.css';
 
@@ -44,11 +44,15 @@ function newClientId() {
 const TITLES = {
   requests: 'My requests', checkout: 'Review your request', sent: 'Request submitted',
   signin: 'Sign in', forgot: 'Reset your password', welcome: 'Set up your account', guide: 'How to request supplies',
+  team: 'Team dashboard', 'team-signin': 'Blueprints team sign in',
 };
-const AUTH_VIEWS = ['signin', 'forgot', 'welcome'];
+const AUTH_VIEWS = ['signin', 'forgot', 'welcome', 'team-signin'];
 // The home page and the guide load only when opened.
 const Home = lazy(() => import('./components/Home'));
 const Guide = lazy(() => import('./components/Guide'));
+// The Blueprints team pages are for members only, so clinics never download them.
+const TeamSignIn = lazy(() => import('./components/TeamSignIn'));
+const TeamDashboard = lazy(() => import('./components/TeamDashboard'));
 
 function enrich(rows) {
   return normalizeInventory(rows).map((item) => {
@@ -128,11 +132,11 @@ function useInventory() {
 
 export default function App() {
   const hashRoute = useHashRoute();
-  const wide = useMediaQuery('(min-width: 1280px)'); // category tree shown
   const { inventory, slow, refreshing, holds, reload, reloadHolds } = useInventory();
   const cart = useCart();
   const [savedOrg, setOrg] = useOrg();
   const auth = useAccount();
+  const teamAuth = useTeam();
   // REACT_APP_AUTH_PREVIEW=off keeps today's guest checkout (the existing tests use it).
   const authOn = process.env.REACT_APP_AUTH_PREVIEW !== 'off';
   const account = authOn ? auth.account : null;
@@ -141,6 +145,11 @@ export default function App() {
   const org = useMemo(() => (account ? { name: account.org, email: account.email } : savedOrg), [account, savedOrg]);
   // Home is the landing page (with how requesting works) for everyone, signed in or not.
   const route = hashRoute.view === 'home' ? { view: 'landing', home: true } : hashRoute;
+  // The dashboard is for Blueprints members: anyone else goes to the team sign-in.
+  useEffect(() => {
+    if (hashRoute.view === 'team' && !teamAuth.member) navigate('/team/signin', { replace: true });
+    if (hashRoute.view === 'team-signin' && teamAuth.member) navigate('/team', { replace: true });
+  }, [hashRoute.view, teamAuth.member]);
   // #/how-it-works is the guide's old address.
   useEffect(() => {
     if (hashRoute.legacy) navigate('/guide', { replace: true });
@@ -150,7 +159,6 @@ export default function App() {
   // Typing stays instant; results follow at lower priority.
   const query = useDeferredValue(useDebounced(rawQuery.trim(), 100));
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [catsOpen, setCatsOpen] = useState(false);
   const [slipNotice, setSlipNotice] = useState(null);
   const [toast, setToast] = useState(null);
   const [lastSent, setLastSent] = useState(null);
@@ -349,7 +357,15 @@ export default function App() {
   } else if (base.view === 'landing') {
     main = (
       <Suspense fallback={<p className="hint" role="status">Loading…</p>}>
-        <Home signedIn={!!account} products={products} />
+        <Home clinic={account ? account.org : null} products={products} fresh={inventory.fresh || inventory.status === 'error'} />
+      </Suspense>
+    );
+  } else if (base.view === 'team-signin' || base.view === 'team') {
+    main = (
+      <Suspense fallback={<p className="hint" role="status">Loading…</p>}>
+        {base.view === 'team' && teamAuth.member
+          ? <TeamDashboard member={teamAuth.member} onSignOut={() => { teamAuth.signOut(); navigate('/team/signin'); }} />
+          : <TeamSignIn onSignedIn={(m) => { teamAuth.signedIn(m); navigate('/team', { replace: true }); }} />}
       </Suspense>
     );
   } else if (base.view === 'guide') {
@@ -435,6 +451,7 @@ export default function App() {
     } else if (base.view === 'category') {
       page = (
         <EmptyState
+          level={1}
           title="This category isn’t in the list anymore"
           action={<a className="btn btn--secondary" href="#/supplies">See all categories</a>}
         />
@@ -449,19 +466,8 @@ export default function App() {
       page = <Landing catalog={catalog} />;
     }
 
-    const showTree = wide && inventory.status === 'done';
     main = (
-      <div className={`shop${showTree ? '' : ' shop--full'}`}>
-        {showTree && (
-          <aside className="shop__tree">
-            <CategoryTree
-              catalog={catalog}
-              activeSlug={category && !query ? category.slug : null}
-              total={catalogTotal}
-              onNavigate={() => setRawQuery('')}
-            />
-          </aside>
-        )}
+      <div className="shop shop--full">
         <div className="shop__main">
           {inventory.status === 'done' && inventory.error && (
             <div className="stale" role="status">
@@ -486,6 +492,14 @@ export default function App() {
           )}
           {/* One step bar on screen: the list drawer shows its own (step 2). */}
           {inventory.status === 'done' && route.view !== 'slip' && <Progress step={1} />}
+          {inventory.status === 'done' && catalogTotal > 0 && (
+            <CategoryMenu
+              catalog={catalog}
+              activeSlug={category && !query ? category.slug : null}
+              total={catalogTotal}
+              onNavigate={() => setRawQuery('')}
+            />
+          )}
           {page}
         </div>
       </div>
@@ -507,7 +521,6 @@ export default function App() {
         lineCount={cart.lines.length}
         units={cart.totalUnits}
         onOpenSlip={() => navigate('/slip')}
-        onOpenCategories={!wide && inCatalog && inventory.status === 'done' ? () => setCatsOpen(true) : null}
         onHome={() => setRawQuery('')}
         account={account}
         onSignOut={onSignOut}
@@ -524,28 +537,13 @@ export default function App() {
         <p className="footer__help">
           Need help? Email <a className="footer__email" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
         </p>
+        <p className="footer__team">
+          {teamAuth.member
+            ? <a href="#/team">Blueprints team dashboard</a>
+            : <a href="#/team/signin">Blueprints team sign in</a>}
+        </p>
         {showDataSource() && <DataSource />}
       </footer>
-
-      {catsOpen && !wide && (
-        <Dialog onClose={() => setCatsOpen(false)} labelledBy="cats-title" variant="left" className="cats-drawer">
-          <div className="drawer__bar">
-            <h2 id="cats-title" className="drawer__title">Categories</h2>
-            <button type="button" className="icon-btn" onClick={() => setCatsOpen(false)} aria-label="Close categories" data-autofocus>
-              <Icon name="close" />
-            </button>
-          </div>
-          <CategoryTree
-            catalog={catalog}
-            activeSlug={category ? category.slug : null}
-            total={catalogTotal}
-            onNavigate={() => {
-              setRawQuery('');
-              setCatsOpen(false);
-            }}
-          />
-        </Dialog>
-      )}
 
       {route.view === 'slip' && (
         <Dialog onClose={closeOverlay} labelledBy="slip-title" variant="side" className="slip-drawer">
@@ -601,6 +599,8 @@ function routePath(r) {
   if (r.view === 'signin') return `/signin${r.next ? `/${r.next}` : ''}`;
   if (r.view === 'forgot') return '/forgot';
   if (r.view === 'guide') return '/guide';
+  if (r.view === 'team') return '/team';
+  if (r.view === 'team-signin') return '/team/signin';
   if (r.view === 'welcome') return `/welcome/${r.token}`;
   if (r.view === 'checkout') return '/review';
   if (r.view === 'sent') return `/sent/${r.id}`;

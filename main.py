@@ -31,6 +31,7 @@ import requests
 from fastapi.responses import JSONResponse
 
 from app import db
+from app import team
 from app.services import email as email_svc
 
 # .env is for local development only; hosted platforms provide real environment variables.
@@ -210,8 +211,12 @@ async def _db_error(_, exc: psycopg.Error):
     return JSONResponse(status_code=503, content={"detail": "Database unavailable."})
 
 
-def require_hq(x_hq_token: Optional[str] = Header(default=None)) -> None:
-    """HQ-only endpoints: send the shared secret (env HQ_API_TOKEN) in the X-HQ-Token header."""
+def require_hq(x_hq_token: Optional[str] = Header(default=None),
+               x_team_session: Optional[str] = Header(default=None)) -> None:
+    """HQ-only endpoints: send the shared secret (env HQ_API_TOKEN) in the X-HQ-Token header, or a
+    Blueprints team session (X-Team-Session) from the member sign-in, which only exists off production."""
+    if x_team_session and _team_preview() and team.session_member(x_team_session):
+        return
     expected = os.environ.get("HQ_API_TOKEN", "").strip()
     if not expected:
         raise HTTPException(status_code=403, detail="HQ access is disabled.")
@@ -687,6 +692,72 @@ def _snapshot_row(inventory: list[dict], sheet_row: int) -> Optional[dict]:
 
 def _health_email():
     return None if _auto_sample_preview() else email_svc.provider_name()
+
+
+# --- Blueprints team (member) sign-in, PREVIEW ---------------------------------------------------
+# The 6-digit code comes back in the response instead of by email, so this is off on production.
+# Later: Google sign-in limited to roster emails (see app/team.py).
+
+def _team_preview() -> bool:
+    return _vercel_env() != "production"
+
+
+def _roster() -> dict:
+    return team.load_roster(_gspread_client if _has_google_creds() else None)
+
+
+class TeamEmailBody(BaseModel):
+    email: str = Field(max_length=254)
+
+
+class TeamCodeBody(BaseModel):
+    email: str = Field(max_length=254)
+    code: str = Field(max_length=12)
+
+
+NOT_A_MEMBER = "This email isn\u2019t on the Blueprints member list."
+
+
+@app.post("/api/team/sign-in")
+async def team_sign_in(body: TeamEmailBody, request: Request):
+    if not _team_preview():
+        raise HTTPException(status_code=503, detail="Team sign-in isn\u2019t set up on this server yet.")
+    _check_rate("team:" + _client_ip(request), RATE_LIMIT)
+    if not team.is_member(body.email, _roster()):
+        raise HTTPException(status_code=403, detail=NOT_A_MEMBER)
+    # Preview: the code is shown on the page. A real version emails it and returns nothing.
+    return {"sent": True, "preview_code": team.new_code(body.email), "minutes": team.CODE_MINUTES}
+
+
+@app.post("/api/team/verify")
+async def team_verify(body: TeamCodeBody, request: Request):
+    if not _team_preview():
+        raise HTTPException(status_code=503, detail="Team sign-in isn\u2019t set up on this server yet.")
+    _check_rate("team:" + _client_ip(request), RATE_LIMIT)
+    member = team.is_member(body.email, _roster())
+    if not member:
+        raise HTTPException(status_code=403, detail=NOT_A_MEMBER)
+    result = team.check_code(body.email, body.code)
+    if result == "wrong":
+        raise HTTPException(status_code=400, detail="That code isn\u2019t right. Check it and try again.")
+    if result != "ok":
+        raise HTTPException(status_code=400, detail="That code has run out. Ask for a new one.")
+    return {"token": team.start_session(member), "role": "hq", **member}
+
+
+@app.get("/api/team/me")
+async def team_me(response: Response, x_team_session: Optional[str] = Header(default=None)):
+    response.headers["Cache-Control"] = "no-store"
+    member = team.session_member(x_team_session) if _team_preview() else None
+    if not member:
+        raise HTTPException(status_code=401, detail="Please sign in again.")
+    return {"role": "hq", **member}
+
+
+@app.post("/api/team/sign-out")
+async def team_sign_out(x_team_session: Optional[str] = Header(default=None)):
+    team.end_session(x_team_session)
+    return {"ok": True}
 
 
 @app.get("/health")
@@ -1413,7 +1484,8 @@ async def inventory_availability(request: Request):
 
 @app.get("/requests")
 async def list_org_requests(request: Request, response: Response, email: Optional[str] = None,
-                            x_hq_token: Optional[str] = Header(default=None)):
+                            x_hq_token: Optional[str] = Header(default=None),
+                            x_team_session: Optional[str] = Header(default=None)):
     """Org view: ?email=<exact address, case-insensitive> returns only that org's lines.
 
     Without a non-empty email this is the HQ view of ALL requests, which needs the
@@ -1422,7 +1494,7 @@ async def list_org_requests(request: Request, response: Response, email: Optiona
     response.headers["Cache-Control"] = "no-store"  # per-clinic data must never be cached
     wanted = (email or "").strip().lower()
     if not wanted:
-        require_hq(x_hq_token)
+        require_hq(x_hq_token, x_team_session)
     else:
         _check_rate("lookup:" + _client_ip(request), LOOKUP_LIMIT)
 

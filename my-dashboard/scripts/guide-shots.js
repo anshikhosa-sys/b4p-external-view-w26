@@ -131,10 +131,12 @@ async function shot(name, markExpr, clip = 'viewport', pad = 24) {
     await type('#auth-password', 'my-clinic-password');
     await shot('sign-in', '__byText("button", "Sign in")', '.auth', 32);
 
-    // 2. Find a supply (categories; the search box is in the same picture's header).
+    // 2. Find a supply: the Categories menu open (the search box is in the same picture's header).
     await go('#/supplies', { signedIn: true });
-    await waitFor('document.querySelector(".landing a[href=\'#/c/gloves\']")');
-    await shot('categories', 'document.querySelector(".landing a[href=\'#/c/gloves\']").closest("section")');
+    await waitFor('document.querySelector(".catmenu__btn")');
+    await ev('document.querySelector(".catmenu__btn").click()');
+    await sleep(400);
+    await shot('categories', 'document.querySelector(".catmenu__btn")');
 
     // 3-5. Open a supply: its photo, + Add to list, then how many.
     await go('#/item/3', { signedIn: true });

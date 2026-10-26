@@ -223,8 +223,9 @@ describe('search', () => {
 
   test('the total counts only listed supplies', async () => {
     await renderAt('#/supplies');
-    const tree = screen.getByRole('navigation', { name: 'Categories' });
-    expect(within(tree).getByRole('link', { name: /All categories/ })).toHaveTextContent(/All categories\s*5$/); // not the expired or unlabelled rows
+    userEvent.click(screen.getByRole('button', { name: /^Categories/ }));
+    const menu = screen.getByRole('menu', { name: 'Categories' });
+    expect(within(menu).getByRole('menuitem', { name: /All categories/ })).toHaveTextContent(/All categories\s*5$/); // not the expired or unlabelled rows
   });
 
   test('the search is in the header on every page except sign-in', async () => {
@@ -544,7 +545,7 @@ describe('review and confirmation', () => {
 
   test.each(['#/sent/<b>x</b>', '#/sent/hello%20world', '#/sent/%E0%A4%A'])('forged %s shows the home page', async (hash) => {
     await renderAt(hash, null);
-    expect(await screen.findByRole('heading', { level: 1, name: 'Free medical supplies, straight from our warehouse' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Welcome, clinic' })).toBeInTheDocument();
   });
 });
 
@@ -591,14 +592,36 @@ describe('loading and errors', () => {
 describe('phone width', () => {
   beforeEach(() => setWide(false));
 
-  test('Categories drawer opens, lists categories, closes with Escape', async () => {
+  test('the Categories menu opens, lists categories, and closes with Escape back on its button', async () => {
     await renderAt('#/supplies');
-    userEvent.click(screen.getByRole('button', { name: /Categories/ }));
-    const drawer = await screen.findByRole('dialog', { name: 'Categories' });
-    expect(within(drawer).getByRole('link', { name: /Needles & Syringes/ })).toBeInTheDocument();
-    expect(within(drawer).getByRole('button', { name: 'Close categories' })).toHaveFocus();
+    const button = screen.getByRole('button', { name: /^Categories/ });
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    userEvent.click(button);
+    const menu = screen.getByRole('menu', { name: 'Categories' });
+    expect(within(menu).getByRole('menuitem', { name: /Needles & Syringes/ })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: /All categories/ })).toHaveFocus();
+    userEvent.keyboard('{arrowdown}');
+    expect(document.activeElement).not.toBe(within(menu).getByRole('menuitem', { name: /All categories/ }));
     userEvent.keyboard('{esc}');
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(button).toHaveFocus();
+  });
+
+  test('picking a category goes there, and the button names it', async () => {
+    await renderAt('#/supplies');
+    userEvent.click(screen.getByRole('button', { name: /^Categories/ }));
+    userEvent.click(screen.getByRole('menuitem', { name: /Needles & Syringes/ }));
+    expect(window.location.hash).toBe('#/c/needles-and-syringes');
+    expect(await screen.findByRole('button', { name: 'Categories: Needles & Syringes' })).toBeInTheDocument();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  test('a click outside closes the Categories menu', async () => {
+    await renderAt('#/supplies');
+    userEvent.click(screen.getByRole('button', { name: /^Categories/ }));
+    expect(screen.getByRole('menu', { name: 'Categories' })).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
   test('no bottom bar; the header button opens the drawer', async () => {
@@ -787,10 +810,11 @@ describe('landing tiles', () => {
     expect(within(gloves).queryByRole('link', { name: /See all/ })).not.toBeInTheDocument();
   });
 
-  test('no Expand all; the category list is beside the tiles', async () => {
+  test('no Expand all and no sidebar; categories are in the Categories menu', async () => {
     await renderAt('#/supplies');
     expect(screen.queryByRole('button', { name: /Expand all|Show all/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: 'Categories' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Categories' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Categories: All categories' })).toHaveAttribute('aria-haspopup', 'menu');
   });
 
   test('the big search box shows results', async () => {
@@ -815,7 +839,7 @@ describe('landing tiles', () => {
 
   test('home is the landing page for everyone, signed in or not', async () => {
     await renderAt('#/');
-    expect(screen.getByRole('heading', { level: 1, name: 'Free medical supplies, straight from our warehouse' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Welcome, clinic' })).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'Request supplies' })[0]).toHaveAttribute('href', '#/supplies');
     expect(screen.getByRole('link', { name: 'Read the full step-by-step guide' })).toHaveAttribute('href', '#/guide');
     cleanup();
@@ -824,11 +848,19 @@ describe('landing tiles', () => {
     window.localStorage.setItem('b4p.mock.session.v1', JSON.stringify({ email: 'clinic@riverside.org', org: 'Riverside Community Clinic' }));
     try {
       await renderAt('#/');
-      expect(screen.getByRole('heading', { level: 1, name: 'Free medical supplies, straight from our warehouse' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: 'Welcome, Riverside Community Clinic' })).toBeInTheDocument();
     } finally {
       process.env.REACT_APP_AUTH_PREVIEW = 'off';
       window.localStorage.removeItem('b4p.mock.session.v1');
     }
+  });
+
+  test('the team dashboard sends anyone not signed in to the team sign-in', async () => {
+    at('#/team');
+    render(<App />);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Blueprints team sign in' })).toBeInTheDocument();
+    await waitFor(() => expect(window.location.hash).toBe('#/team/signin'));
+    expect(within(screen.getByRole('contentinfo')).getByRole('link', { name: 'Blueprints team sign in' })).toHaveAttribute('href', '#/team/signin');
   });
 
   test('#/guide is the step-by-step guide, and #/how-it-works goes there', async () => {

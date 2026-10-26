@@ -17,6 +17,7 @@ function AccountMenu({ account, onSignOut }) {
           <span className="acct__email">{account.email}</span>
         </p>
         <a className="acct__item" href="#/requests" onClick={() => { ref.current.open = false; }}>My requests</a>
+        <a className="acct__item" href="#/team/signin" onClick={() => { ref.current.open = false; }}>Blueprints team sign in</a>
         <button type="button" className="acct__item" onClick={() => { ref.current.open = false; onSignOut(); }}>Sign out</button>
       </div>
     </details>
@@ -64,7 +65,7 @@ function HeaderSearch({ value, onChange, onSubmit }) {
 // One row, left to right: logo (home), Request supplies, Guide, the search bar, Account, Your list.
 // Phones: logo, Account and Your list on top; the search below; then Request supplies and Guide.
 export default function Header({
-  view, lineCount, units = 0, onOpenSlip, onOpenCategories, onHome, account, onSignOut, authPage, showSignIn,
+  view, lineCount, units = 0, onOpenSlip, onHome, account, onSignOut, authPage, showSignIn,
   query, onQuery, onSearch,
 }) {
   // Counts up each time the list grows (a new supply, or more of one), to replay the animation.
@@ -91,11 +92,6 @@ export default function Header({
             Request supplies
           </a>
           <a href="#/guide" className="header__guide" aria-current={view === 'guide' ? 'page' : undefined}>Guide</a>
-          {!authPage && onOpenCategories && (
-            <button type="button" className="header__cats" onClick={onOpenCategories}>
-              <Icon name="list" size={18} /> <span className="header__cats-label">Categories</span>
-            </button>
-          )}
         </nav>
 
         {!authPage && <HeaderSearch value={query} onChange={onQuery} onSubmit={onSearch} />}

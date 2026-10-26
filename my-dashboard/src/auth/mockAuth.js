@@ -66,9 +66,46 @@ export async function signIn({ email, password }) {
   return publicAccount(key, account);
 }
 
+// Invites made on the team dashboard (preview: kept in this browser, so the clinic's setup page
+// works on the same computer). The real version stores them on the server and emails the link.
+const STORED_INVITES_KEY = 'b4p.mock.invites.v1';
+const storedInvites = () => readJSON(STORED_INVITES_KEY, {}) || {};
+const findInvite = (token) => (Object.prototype.hasOwnProperty.call(INVITES, token) ? INVITES[token] : storedInvites()[token]);
+
+// 128 random bits as URL-safe text (22 characters).
+function newToken() {
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function createInvite({ org, name, email }) {
+  const clean = cleanEmail(email);
+  const token = newToken();
+  writeJSON(STORED_INVITES_KEY, {
+    ...storedInvites(),
+    [token]: { org: org.trim(), name: name.trim(), email: clean, created: Date.now() },
+  });
+  return token;
+}
+
+// Newest first, each with its status: Waiting until the clinic sets up its account.
+export function listInvites() {
+  const done = accounts();
+  return Object.entries(storedInvites())
+    .map(([token, inv]) => ({ token, ...inv, status: done[inv.email] ? 'Account set up' : 'Waiting' }))
+    .sort((a, b) => b.created - a.created);
+}
+
+export function cancelInvite(token) {
+  const all = storedInvites();
+  delete all[token];
+  writeJSON(STORED_INVITES_KEY, all);
+}
+
 export async function lookupInvite(token) {
   await wait(300);
-  const invite = INVITES[token];
+  const invite = findInvite(token);
   if (!invite) throw new AuthError('invalid', { code: 'invalid' });
   if (accounts()[invite.email]) throw new AuthError('used', { code: 'used', email: invite.email });
   return { email: invite.email, org: invite.org, name: invite.name };

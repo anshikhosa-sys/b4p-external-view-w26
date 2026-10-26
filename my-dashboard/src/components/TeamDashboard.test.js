@@ -1,0 +1,100 @@
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { acceptInvite, createInvite, listInvites, lookupInvite } from '../auth/mockAuth';
+import TeamDashboard, { clinicSummary, filterGroups, withOrgs } from './TeamDashboard';
+
+const row = (id, org, email, status, item, qty, ts) => ({
+  'Request ID': id, 'Org Name': org, 'Org Email': email, Status: status, 'Item Name': item, 'Quantity Requested': String(qty), Timestamp: ts,
+});
+const ROWS = [
+  row('REQ-1', 'Riverside Clinic', 'r@x.org', 'Under Review', 'Gauze pads', 4, '2026-10-20T10:00:00Z'),
+  row('REQ-1', 'Riverside Clinic', 'r@x.org', 'Under Review', 'Exam gloves', 2, '2026-10-20T10:00:00Z'),
+  row('REQ-2', 'Hillside Health', 'h@x.org', 'Approved', 'Syringes', 10, '2026-10-22T10:00:00Z'),
+  row('REQ-3', 'Riverside Clinic', 'r@x.org', 'Shipped', 'Masks', 5, '2026-10-24T10:00:00Z'),
+];
+
+// jsdom has no Web Crypto; invite tokens need real randomness, so use Node's.
+beforeAll(() => {
+  if (!window.crypto || !window.crypto.getRandomValues) {
+    Object.defineProperty(window, 'crypto', { value: require('crypto').webcrypto, configurable: true });
+  }
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+  window.localStorage.clear();
+});
+
+test('requests are grouped with their clinic, items and units', () => {
+  const groups = withOrgs(ROWS);
+  expect(groups.map((g) => g.id)).toEqual(['REQ-3', 'REQ-2', 'REQ-1']);
+  const r1 = groups.find((g) => g.id === 'REQ-1');
+  expect(r1.org).toEqual({ name: 'Riverside Clinic', email: 'r@x.org' });
+  expect(r1.units).toBe(6);
+  expect(r1.lines).toEqual([{ name: 'Gauze pads', quantity: 4 }, { name: 'Exam gloves', quantity: 2 }]);
+});
+
+test('the per-clinic summary counts requests, units and the last request', () => {
+  expect(clinicSummary(withOrgs(ROWS))).toEqual([
+    { clinic: 'Riverside Clinic', email: 'r@x.org', requests: 2, units: 11, last: '2026-10-24T10:00:00Z' },
+    { clinic: 'Hillside Health', email: 'h@x.org', requests: 1, units: 10, last: '2026-10-22T10:00:00Z' },
+  ]);
+});
+
+test('filters by status and by clinic', () => {
+  const groups = withOrgs(ROWS);
+  expect(filterGroups(groups, { status: 'review' }).map((g) => g.id)).toEqual(['REQ-1']);
+  expect(filterGroups(groups, { clinic: 'Riverside Clinic' }).map((g) => g.id)).toEqual(['REQ-3', 'REQ-1']);
+  expect(filterGroups(groups, { status: 'shipped', clinic: 'Hillside Health' })).toEqual([]);
+});
+
+test('the dashboard lists requests and changes a status through the server', async () => {
+  const calls = [];
+  jest.spyOn(global, 'fetch').mockImplementation((url, opts = {}) => {
+    calls.push([url, opts.method || 'GET', opts.headers]);
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(opts.method === 'PATCH' ? { ok: true } : ROWS) });
+  });
+  render(<TeamDashboard member={{ token: 'sess', name: 'Rhea', email: 'rchokha@umich.edu', position: 'Tech' }} onSignOut={jest.fn()} />);
+  await waitFor(() => expect(screen.getAllByRole('table')).toHaveLength(2));
+  const table = screen.getAllByRole('table')[1];
+  expect(within(table).getByText('Hillside Health')).toBeInTheDocument();
+  expect(calls[0][2]).toEqual({ 'X-Team-Session': 'sess' });
+
+  userEvent.selectOptions(screen.getByLabelText('Clinic'), 'Riverside Clinic');
+  expect(within(table).queryByText('Hillside Health')).not.toBeInTheDocument();
+  userEvent.click(screen.getByRole('button', { name: /^Under review/ }));
+  userEvent.click(within(table).getByRole('button', { name: 'Approve' }));
+  await waitFor(() => expect(calls.some(([url, method]) => method === 'PATCH' && url.endsWith('/requests/REQ-1/status'))).toBe(true));
+});
+
+test('a clinic access link can be made, used by the clinic, and shows as set up', async () => {
+  const token = createInvite({ org: 'Lakeview Clinic', name: 'Sam Lee', email: ' Sam@Lakeview.org ' });
+  expect(token).toMatch(/^[A-Za-z0-9_-]{22}$/); // 128 random bits
+  expect(createInvite({ org: 'Other', name: 'X', email: 'x@y.org' })).not.toBe(token);
+  expect(listInvites().find((i) => i.token === token).status).toBe('Waiting');
+  expect(await lookupInvite(token)).toEqual({ email: 'sam@lakeview.org', org: 'Lakeview Clinic', name: 'Sam Lee' });
+  await acceptInvite(token, { password: 'lakeview clinic supplies' });
+  expect(listInvites().find((i) => i.token === token).status).toBe('Account set up');
+  await expect(lookupInvite(token)).rejects.toMatchObject({ code: 'used' });
+});
+
+test('the links tab makes a link with Copy and Email buttons, and can cancel it', async () => {
+  jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve([]) });
+  jest.spyOn(window, 'confirm').mockReturnValue(true);
+  render(<TeamDashboard member={{ token: 'sess', name: 'Rhea', email: 'r@umich.edu' }} onSignOut={jest.fn()} />);
+  userEvent.click(screen.getByRole('tab', { name: 'Clinic access links' }));
+  userEvent.click(screen.getByRole('button', { name: 'Make link' }));
+  expect(screen.getByText('Type the clinic’s name.')).toBeInTheDocument();
+  userEvent.type(screen.getByLabelText('Clinic name'), 'Lakeview Clinic');
+  userEvent.type(screen.getByLabelText('Contact name'), 'Sam Lee');
+  userEvent.type(screen.getByLabelText('Contact email'), 'sam@lakeview.org');
+  userEvent.click(screen.getByRole('button', { name: 'Make link' }));
+  const link = screen.getByLabelText('Access link for Lakeview Clinic');
+  expect(link.value).toMatch(/#\/welcome\/[A-Za-z0-9_-]{22}$/);
+  expect(screen.getByRole('link', { name: 'Email this link' }).getAttribute('href')).toMatch(/^mailto:sam%40lakeview\.org\?subject=/);
+  const list = screen.getAllByRole('table').pop();
+  expect(within(list).getByText('Waiting')).toBeInTheDocument();
+  userEvent.click(within(list).getByRole('button', { name: 'Cancel link' }));
+  expect(screen.getByText('No links yet.')).toBeInTheDocument();
+  expect(listInvites()).toEqual([]);
+});
