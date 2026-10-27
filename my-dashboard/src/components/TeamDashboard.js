@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, getAllRequests, setRequestStatus } from '../api';
-import { cancelInvite, createInvite, listInvites } from '../auth/mockAuth';
-import { cleanEmail, emailError } from '../auth/validate';
 import { formatDateTime, groupRequests } from '../inventory';
 import Icon from './Icons';
 import { EmptyState, ErrorState } from './States';
 
-// The Blueprints team dashboard (#/team): which clinics asked for what, with status changes, and
-// links that let a clinic set up its account. Status rules and the per-clinic grouping come from
+// The Blueprints team dashboard (#/team): which clinics asked for what, with status changes.
+// (Clinics sign in with their email and a code, so there are no access links to hand out.) Status rules and the per-clinic grouping come from
 // the HQ review page in team PR #9; every change is still checked by the server.
 
 // Mirrors _check_transition in main.py: forward only; Deny/Cancel only before shipping.
@@ -192,130 +190,9 @@ function Requests({ session, onSignedOut }) {
   );
 }
 
-const inviteLink = (token) => `${window.location.origin}${window.location.pathname}#/welcome/${token}`;
-const mailtoFor = (inv, link) => {
-  const subject = 'Your Blueprints for Pangaea supply account';
-  const body = `Hi ${inv.name || 'there'},\n\n${inv.org} can now request donated medical supplies from Blueprints for Pangaea.\nOpen this link to choose your password and set up your account:\n\n${link}\n\nThe link works until your account is set up. Questions? Just reply to this email.\n\nBlueprints for Pangaea`;
-  return `mailto:${encodeURIComponent(inv.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-};
-
-function Invites() {
-  const [values, setValues] = useState({ org: '', name: '', email: '' });
-  const [errors, setErrors] = useState({});
-  const [made, setMade] = useState(null);
-  const [copied, setCopied] = useState(false);
-  const [invites, setInvites] = useState(() => listInvites());
-  const linkRef = useRef(null);
-
-  const set = (k) => (e) => { setValues((v) => ({ ...v, [k]: e.target.value })); setErrors((x) => ({ ...x, [k]: null })); };
-
-  const submit = (e) => {
-    e.preventDefault();
-    const next = {
-      org: values.org.trim() ? null : 'Type the clinic’s name.',
-      name: values.name.trim() ? null : 'Type the contact person’s name.',
-      email: emailError(values.email),
-    };
-    setErrors(next);
-    if (next.org || next.name || next.email) return;
-    const token = createInvite(values);
-    setMade({ token, ...values, email: cleanEmail(values.email) });
-    setCopied(false);
-    setValues({ org: '', name: '', email: '' });
-    setInvites(listInvites());
-  };
-
-  const copy = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-    } catch {
-      if (linkRef.current) linkRef.current.select();
-    }
-  };
-
-  const cancel = (inv) => {
-    if (!window.confirm(`Cancel the link for ${inv.org}? It will stop working.`)) return;
-    cancelInvite(inv.token);
-    setInvites(listInvites());
-    if (made && made.token === inv.token) setMade(null);
-  };
-
-  const field = (k, label, type = 'text', auto) => (
-    <div className={`field${errors[k] ? ' field--error' : ''}`}>
-      <label htmlFor={`inv-${k}`}>{label}</label>
-      <input id={`inv-${k}`} type={type} autoComplete={auto} value={values[k]} onChange={set(k)}
-        aria-invalid={!!errors[k]} aria-describedby={errors[k] ? `inv-${k}-error` : undefined} />
-      {errors[k] && <p className="field__error" id={`inv-${k}-error`}>{errors[k]}</p>}
-    </div>
-  );
-
-  return (
-    <>
-      <section className="team__section" aria-labelledby="new-link-title">
-        <h2 id="new-link-title" className="section-title">Make a clinic access link</h2>
-        <p className="hint">The clinic opens the link, checks its details and chooses a password. The link works until then.</p>
-        <form className="team__form" onSubmit={submit} noValidate>
-          {field('org', 'Clinic name', 'text', 'organization')}
-          {field('name', 'Contact name', 'text', 'off')}
-          {field('email', 'Contact email', 'email', 'off')}
-          <button type="submit" className="btn btn--primary">Make link</button>
-        </form>
-        {made && (
-          <div className="team__made" role="status">
-            <p><strong>Link for {made.org}</strong> ({made.email})</p>
-            <input ref={linkRef} className="team__link" readOnly value={inviteLink(made.token)} aria-label={`Access link for ${made.org}`} onFocus={(e) => e.target.select()} />
-            <div className="team__made-actions">
-              <button type="button" className="btn btn--secondary" onClick={() => copy(inviteLink(made.token))}>
-                <Icon name="copy" size={18} /> {copied ? 'Copied' : 'Copy link'}
-              </button>
-              <a className="btn btn--primary" href={mailtoFor(made, inviteLink(made.token))}>
-                <Icon name="mail" size={18} /> Email this link
-              </a>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <section className="team__section" aria-labelledby="links-title">
-        <h2 id="links-title" className="section-title">Links</h2>
-        {invites.length === 0 ? (
-          <p className="hint">No links yet.</p>
-        ) : (
-          <div className="team__scroll">
-            <table className="team-table">
-              <thead><tr><th scope="col">Clinic</th><th scope="col">Contact</th><th scope="col">Made</th><th scope="col">Status</th><th scope="col"><span className="visually-hidden">Actions</span></th></tr></thead>
-              <tbody>
-                {invites.map((inv) => (
-                  <tr key={inv.token}>
-                    <th scope="row">{inv.org}</th>
-                    <td>{inv.name}<br /><a href={`mailto:${inv.email}`}>{inv.email}</a></td>
-                    <td>{formatDateTime(new Date(inv.created).toISOString())}</td>
-                    <td><span className={`team__status team__status--${inv.status === 'Waiting' ? 'waiting' : 'done'}`}>{inv.status}</span></td>
-                    <td className="team__actions">
-                      {inv.status === 'Waiting' && (
-                        <>
-                          <button type="button" className="btn btn--sm btn--secondary" onClick={() => copy(inviteLink(inv.token))}>Copy link</button>
-                          <button type="button" className="btn btn--sm btn--quiet" onClick={() => cancel(inv)}>Cancel link</button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-    </>
-  );
-}
-
 export default function TeamDashboard({ member, onSignOut }) {
-  const [tab, setTab] = useState('requests');
   const titleRef = useRef(null);
   useEffect(() => titleRef.current && titleRef.current.focus(), []);
-  const tabs = [['requests', 'Requests'], ['links', 'Clinic access links']];
 
   return (
     <div className="team">
@@ -326,17 +203,7 @@ export default function TeamDashboard({ member, onSignOut }) {
         </div>
         <button type="button" className="btn btn--secondary" onClick={onSignOut}>Sign out</button>
       </div>
-      <div className="team__tabs" role="tablist" aria-label="Dashboard">
-        {tabs.map(([id, label]) => (
-          <button key={id} type="button" role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`}
-            className={`team__tab${tab === id ? ' team__tab--on' : ''}`} onClick={() => setTab(id)}>
-            {label}
-          </button>
-        ))}
-      </div>
-      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'requests' ? <Requests session={member.token} onSignedOut={onSignOut} /> : <Invites />}
-      </div>
+      <Requests session={member.token} onSignedOut={onSignOut} />
     </div>
   );
 }

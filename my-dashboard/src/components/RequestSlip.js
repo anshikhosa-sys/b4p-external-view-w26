@@ -1,6 +1,5 @@
 import { MAX_LINES } from '../useCart';
 import Icon from './Icons';
-import Progress from './Progress';
 import QuantityStepper from './QuantityStepper';
 
 const today = () => new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -19,7 +18,6 @@ export default function RequestSlip({ lines, totalUnits, org, notice, onDismissN
           </button>
         )}
       </div>
-      <Progress step={2} />
       <div className="slip__from">
         <span className="slip__label">From</span>
         <span className={org.name ? 'slip__org' : 'slip__org slip__org--blank'}>

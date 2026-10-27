@@ -31,6 +31,7 @@ import requests
 from fastapi.responses import JSONResponse
 
 from app import db
+from app import clinic_auth
 from app import team
 from app.services import email as email_svc
 
@@ -758,6 +759,65 @@ async def team_me(response: Response, x_team_session: Optional[str] = Header(def
 async def team_sign_out(x_team_session: Optional[str] = Header(default=None)):
     team.end_session(x_team_session)
     return {"ok": True}
+
+
+# --- Clinic sign-in: email, then a 6-digit code (app/clinic_auth.py) ----------------------------
+# The code is emailed when an email provider is set. Without one, off production only, it comes
+# back in the response so the page can show it (like the team preview above).
+
+class ClinicEmailBody(BaseModel):
+    email: str = Field(max_length=254)
+
+
+class ClinicCodeBody(BaseModel):
+    email: str = Field(max_length=254)
+    code: str = Field(max_length=12)
+    ticket: str = Field(max_length=1000)
+
+
+def _clinic_auth_ready() -> None:
+    if _vercel_env() == "production" and not (clinic_auth.configured() and email_svc.provider_name()):
+        raise HTTPException(status_code=503, detail="Email sign-in isn’t set up yet. Email the Blueprints team.")
+
+
+@app.post("/api/auth/sign-in")
+async def clinic_sign_in(body: ClinicEmailBody, request: Request):
+    _clinic_auth_ready()
+    email = clinic_auth.clean_email(body.email)
+    if not EMAIL_RE.match(email):
+        raise HTTPException(status_code=422, detail="Enter a valid email address, like name@clinic.org.")
+    _check_rate("auth:" + _client_ip(request), RATE_LIMIT)
+    _check_rate("auth-to:" + email, 3)  # don't let anyone flood one inbox
+    code, ticket = clinic_auth.new_code(email)
+    out = {"sent": True, "ticket": ticket, "minutes": clinic_auth.CODE_MINUTES}
+    if email_svc.provider_name():
+        if not email_svc.send_sign_in_code(email, code, clinic_auth.CODE_MINUTES):
+            raise HTTPException(status_code=502, detail="We couldn’t send the email. Try again in a minute.")
+    else:
+        out["preview_code"] = code  # never on production: _clinic_auth_ready refuses there
+    return out
+
+
+@app.post("/api/auth/verify")
+async def clinic_verify(body: ClinicCodeBody, request: Request):
+    _clinic_auth_ready()
+    _check_rate("auth:" + _client_ip(request), RATE_LIMIT)
+    result = clinic_auth.check_code(body.email, body.code, body.ticket)
+    if result == "wrong":
+        raise HTTPException(status_code=400, detail="That code isn’t right. Check it and try again.")
+    if result != "ok":
+        raise HTTPException(status_code=400, detail="That code has run out. Ask for a new one.")
+    email = clinic_auth.clean_email(body.email)
+    return {"token": clinic_auth.start_session(email), "email": email}
+
+
+@app.get("/api/auth/me")
+async def clinic_me(response: Response, x_clinic_session: Optional[str] = Header(default=None)):
+    response.headers["Cache-Control"] = "no-store"
+    email = clinic_auth.session_email(x_clinic_session)
+    if not email:
+        raise HTTPException(status_code=401, detail="Please sign in again.")
+    return {"email": email}
 
 
 @app.get("/health")

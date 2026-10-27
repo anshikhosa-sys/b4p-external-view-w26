@@ -103,3 +103,10 @@ export const getAllRequests = (session, opts) =>
   apiRequest('/requests', { ...opts, headers: team(session), cache: 'no-store' });
 export const setRequestStatus = (id, status, session) =>
   apiRequest(`/requests/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: { status }, headers: team(session) });
+
+// Clinic sign-in: an email, then a 6-digit code. The server sends back a signed ticket with the
+// code request; the page sends it back with the code. The session goes in X-Clinic-Session.
+export const clinicSignIn = (email) => apiRequest('/api/auth/sign-in', { method: 'POST', body: { email } });
+export const clinicVerify = (email, code, ticket) =>
+  apiRequest('/api/auth/verify', { method: 'POST', body: { email, code, ticket } });
+export const clinicMe = (token) => apiRequest('/api/auth/me', { headers: { 'X-Clinic-Session': token }, cache: 'no-store' });

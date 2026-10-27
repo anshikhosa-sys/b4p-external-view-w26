@@ -27,30 +27,22 @@ export function useMediaQuery(query) {
   return matches;
 }
 
-// Routes: #/ (home: the landing page)  #/guide (step-by-step guide)  #/supplies  #/c/<category>[/<type>]  #/requests  #/item/<row>  #/slip  #/review  #/sent/<id>
-//         #/signin[/review|/requests]  #/forgot  #/welcome/<invite token>  #/how-it-works (old address of #/guide)
+// Routes: #/ (home)  #/supplies  #/requests  #/item/<row>  #/slip  #/review  #/sent  #/signin[/review|/requests]
 //         #/team (Blueprints team dashboard)  #/team/signin
-// Only real request IDs render on the "submitted" page (no spoofed text via links).
-const REQUEST_ID_RE = /^REQ-\d+-[0-9a-z]+$/i;
-const SLUG_RE = /^[a-z0-9-]{1,80}$/;
+// Old addresses still land somewhere sensible: #/guide and #/how-it-works go home, #/c/... to the
+// supplies, #/forgot and #/welcome/... (the password screens) to sign-in.
 export function parseHash(hash) {
   const path = String(hash || '').replace(/^#/, '').replace(/^\/+/, '');
-  const [view, param, extra] = path.split('/');
+  const [view, param] = path.split('/');
   if (view === 'requests') return { view: 'requests' };
   if (view === 'signin') return { view: 'signin', next: ['review', 'requests'].includes(param) ? param : null };
-  if (view === 'forgot') return { view: 'forgot' };
+  if (view === 'forgot' || view === 'welcome') return { view: 'signin', next: null };
   if (view === 'team') return param === 'signin' ? { view: 'team-signin' } : { view: 'team' };
-  if (view === 'guide') return { view: 'guide' };
-  if (view === 'how-it-works') return { view: 'guide', legacy: true };
-  if (view === 'supplies') return { view: 'catalog' };
-  if (view === 'welcome' && /^[A-Za-z0-9_-]{1,100}$/.test(param || '')) return { view: 'welcome', token: param };
+  if (view === 'supplies' || view === 'c') return { view: 'catalog' };
   if (view === 'review' || view === 'checkout') return { view: 'checkout' };
   if (view === 'slip') return { view: 'slip' };
-  if (view === 'sent' && REQUEST_ID_RE.test(param || '')) return { view: 'sent', id: param };
+  if (view === 'sent') return { view: 'sent' };
   if (view === 'item' && /^\d+$/.test(param || '')) return { view: 'item', id: Number(param) };
-  if (view === 'c' && SLUG_RE.test(param || '')) {
-    return { view: 'category', slug: param, type: SLUG_RE.test(extra || '') ? extra : null };
-  }
   return { view: 'home' };
 }
 

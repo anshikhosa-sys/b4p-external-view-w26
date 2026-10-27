@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getMyRequests } from '../api';
-import { formatDateTime, groupRequests, STATUS_STEPS, statusInfo, suppliesLabel } from '../inventory';
-import { EMAIL_RE } from './CheckoutForm';
+import { formatDateTime, groupRequests, statusInfo, suppliesLabel } from '../inventory';
+import { EMAIL_RE } from '../auth/validate';
 import Icon from './Icons';
 import { EmptyState, ErrorState, WakingNotice } from './States';
 
-function StatusTrack({ status }) {
+// One plain line: where the request is now. (No step tracker and no request ID: the team keeps the
+// ID in the Requests sheet; clinics just need the status.)
+function Status({ status }) {
   const info = statusInfo(status);
   if (info.stopped) {
     return (
@@ -15,25 +17,9 @@ function StatusTrack({ status }) {
     );
   }
   return (
-    <>
-      <p className="req__status">
-        <Icon name={info.step >= 3 ? 'check' : 'clock'} size={18} /> {info.label}
-      </p>
-      <ol className="track" aria-label={`Status: ${info.label}`}>
-        {STATUS_STEPS.map((label, i) => {
-          const state = i < info.step ? 'done' : i === info.step ? 'current' : 'todo';
-          return (
-            <li key={label} className={`track__step track__step--${state}`} aria-current={i === info.step ? 'step' : undefined}>
-              <span className="track__dot" aria-hidden="true">{state === 'done' && <Icon name="check" size={12} />}</span>
-              <span className="track__label">
-                {label}
-                <span className="visually-hidden">{state === 'done' ? ', done' : state === 'current' ? ', current step' : ', not yet'}</span>
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-    </>
+    <p className={`req__status req__status--${info.step >= 3 ? 'done' : 'open'}`}>
+      <Icon name={info.step >= 3 ? 'check' : 'clock'} size={18} /> {info.label}
+    </p>
   );
 }
 
@@ -150,10 +136,9 @@ export default function MyRequests({ org, account, onEmailChange, highlightId, o
             return (
               <li key={g.id} className={`req${g.id === highlightId ? ' req--new' : ''}`}>
                 <div className="req__head">
-                  <h2 className="req__id num">{g.id}</h2>
-                  <p className="req__date">Sent {formatDateTime(g.timestamp)}</p>
+                  <h2 className="req__date">Sent {formatDateTime(g.timestamp)}</h2>
+                  <Status status={g.status} />
                 </div>
-                <StatusTrack status={g.status} />
                 <details className="req__items">
                   <summary>
                     {suppliesLabel(g.lines.length, g.lotCount)}, {units.toLocaleString('en-US')} {units === 1 ? 'unit' : 'units'}

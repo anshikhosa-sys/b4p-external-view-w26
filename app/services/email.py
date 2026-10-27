@@ -329,6 +329,18 @@ details any time under <strong>My requests</strong> on the dashboard.</p>
     return send(org_email, "Your supply request has been received - Blueprints HQ", html, text)
 
 
+def send_sign_in_code(to: str, code: str, minutes: int) -> bool:
+    """The 6-digit sign-in code. Fixed template: nothing the requester typed goes in it."""
+    html = _wrap("Your sign-in code", f"""
+<p>Type this code on the Blueprints supply site to sign in:</p>
+<p style="font-size:28px;font-weight:bold;letter-spacing:6px;margin:0 0 16px;">{_e(code)}</p>
+<p>It works for {minutes} minutes.</p>
+<p>If you didn't try to sign in, you can ignore this email.</p>""")
+    text = (f"Type this code on the Blueprints supply site to sign in: {code}\n\n"
+            f"It works for {minutes} minutes.\n\nIf you didn't try to sign in, you can ignore this email.")
+    return send(to, f"{code} is your Blueprints sign-in code", html, text)
+
+
 def send_hq_alert(org_name: str, org_email: str, items: list[dict], request_id: str,
                   review_flagged: list[str]) -> bool:
     """Internal alert to HQ_EMAIL for a new request. Skipped when HQ_EMAIL is unset."""

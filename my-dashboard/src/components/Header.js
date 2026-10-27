@@ -24,50 +24,8 @@ function AccountMenu({ account, onSignOut }) {
   );
 }
 
-// The one supply search, in the header on every page. Results show as you type; the button
-// (and Enter) also takes you to the results from any page.
-function HeaderSearch({ value, onChange, onSubmit }) {
-  return (
-    <form
-      className="hsearch"
-      role="search"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit();
-        e.currentTarget.querySelector('input').blur();
-      }}
-    >
-      <label htmlFor="supply-search" className="visually-hidden">What supplies do you need?</label>
-      <input
-        id="supply-search"
-        className="hsearch__input"
-        type="search"
-        autoComplete="off"
-        spellCheck="false"
-        enterKeyHint="search"
-        placeholder="What supplies do you need?"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape' && value) {
-            e.preventDefault();
-            onChange('');
-          }
-        }}
-      />
-      <button type="submit" className="hsearch__btn" aria-label="Search">
-        <Icon name="search" size={22} />
-      </button>
-    </form>
-  );
-}
-
-// One row, left to right: logo (home), Request supplies, Guide, the search bar, Account, Your list.
-// Phones: logo, Account and Your list on top; the search below; then Request supplies and Guide.
-export default function Header({
-  view, lineCount, units = 0, onOpenSlip, onHome, account, onSignOut, authPage, showSignIn,
-  query, onQuery, onSearch,
-}) {
+// One row: logo (home), Request supplies, then Account and Your list on the right.
+export default function Header({ view, lineCount, units = 0, onOpenSlip, account, onSignOut, authPage, showSignIn }) {
   // Counts up each time the list grows (a new supply, or more of one), to replay the animation.
   const [bump, setBump] = useState(0);
   const lastUnits = useRef(units);
@@ -82,19 +40,16 @@ export default function Header({
     <header className="header">
       <div className="header__inner">
         {/* The logo alone is the way home. Inlined into the CSS as a data: URI, so the page makes no image requests. */}
-        <a className="header__brand" href="#/" onClick={onHome} aria-label="Blueprints for Pangaea, home">
+        <a className="header__brand" href="#/" aria-label="Blueprints for Pangaea, home">
           <span className="header__logo" aria-hidden="true" />
         </a>
 
         <nav className="header__main" aria-label="Main">
-          <a className="btn btn--primary header__request" href="#/supplies" onClick={onHome}
+          <a className="btn btn--primary header__request" href="#/supplies"
             aria-current={view === 'catalog' ? 'page' : undefined}>
             Request supplies
           </a>
-          <a href="#/guide" className="header__guide" aria-current={view === 'guide' ? 'page' : undefined}>Guide</a>
         </nav>
-
-        {!authPage && <HeaderSearch value={query} onChange={onQuery} onSubmit={onSearch} />}
 
         <div className="header__end">
           {account ? (

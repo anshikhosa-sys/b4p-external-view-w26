@@ -1,9 +1,7 @@
 import { useRef, useState } from 'react';
 import Icon from './Icons';
-import Progress from './Progress';
+import { EMAIL_RE } from '../auth/validate';
 import { WakingNotice } from './States';
-
-export const EMAIL_RE = /^[^@\s<>"]+@[^@\s<>"]+\.[^@\s<>"]+$/;
 
 export function validateOrg({ name, email }) {
   const errors = {};
@@ -63,7 +61,6 @@ export default function CheckoutForm({ lines, totalUnits, org, account, onSignOu
       <button type="button" className="back" onClick={onBack}>
         <Icon name="back" size={18} /> Back to supplies
       </button>
-      <Progress step={3} />
       <h1 className="page-title">Review your request</h1>
       <div className="checkout__stack">
         <section className="checkout__summary" aria-labelledby="summary-title">

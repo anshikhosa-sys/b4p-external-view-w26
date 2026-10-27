@@ -163,8 +163,13 @@ describe('parseHash', () => {
     ['#/item/42', { view: 'item', id: 42 }],
     ['#/item/abc', { view: 'home' }],
     ['#/item/', { view: 'home' }],
-    ['#/sent/REQ-1760000000-123', { view: 'sent', id: 'REQ-1760000000-123' }],
-    ['#/sent/', { view: 'home' }],
+    ['#/sent', { view: 'sent' }],
+    ['#/sent/REQ-1760000000-123', { view: 'sent' }], // no request ID in the address any more
+    ['#/c/gloves/exam-gloves', { view: 'catalog' }], // old category pages
+    ['#/guide', { view: 'home' }],
+    ['#/how-it-works', { view: 'home' }],
+    ['#/forgot', { view: 'signin', next: null }],
+    ['#/welcome/abc123', { view: 'signin', next: null }],
     ['#/nope', { view: 'home' }],
     ['#requests', { view: 'requests' }],
   ])('%s', (hash, route) => {

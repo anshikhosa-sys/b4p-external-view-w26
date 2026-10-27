@@ -1,39 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { suppliesLabel } from '../inventory';
 import Icon from './Icons';
 
-async function copyText(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const el = document.createElement('textarea');
-    el.value = text;
-    el.setAttribute('readonly', '');
-    el.style.position = 'fixed';
-    el.style.opacity = '0';
-    document.body.appendChild(el);
-    el.select();
-    let ok = false;
-    try {
-      ok = document.execCommand('copy');
-    } catch {
-      ok = false;
-    }
-    document.body.removeChild(el);
-    return ok;
-  }
-}
-
-export default function Confirmation({ requestId, sent, onBrowse, onViewRequests }) {
-  const [copied, setCopied] = useState(null);
+export default function Confirmation({ sent, onBrowse, onViewRequests }) {
   const headingRef = useRef(null);
   useEffect(() => headingRef.current.focus(), []);
   const email = sent && sent.email;
-
-  const onCopy = async () => {
-    setCopied((await copyText(requestId)) ? 'ok' : 'fail');
-  };
 
   return (
     <div className="confirm">
@@ -44,16 +16,6 @@ export default function Confirmation({ requestId, sent, onBrowse, onViewRequests
           {sent.orgName} asked for {suppliesLabel(sent.lineCount, sent.lotCount)}, {sent.totalUnits.toLocaleString('en-US')} {sent.totalUnits === 1 ? 'unit' : 'units'} in all.
         </p>
       )}
-      <div className="confirm__id">
-        <span className="confirm__id-label">Request ID</span>
-        <span className="confirm__id-value num">{requestId}</span>
-        <button type="button" className="btn btn--secondary btn--sm no-print" onClick={onCopy}>
-          <Icon name={copied === 'ok' ? 'check' : 'copy'} size={18} /> {copied === 'ok' ? 'Copied' : 'Copy'}
-        </button>
-        <span className="visually-hidden" role="status">{copied === 'ok' ? 'Request ID copied' : ''}</span>
-        {copied === 'fail' && <p className="field__error">Couldn’t copy automatically. Select the ID and copy it by hand.</p>}
-      </div>
-
       {email && (
         <p className="confirm__email">
           <Icon name="mail" size={20} />
@@ -84,7 +46,7 @@ export default function Confirmation({ requestId, sent, onBrowse, onViewRequests
           <strong>You get an email when it’s approved</strong>, and again when it ships.
         </li>
         <li>
-          <strong>Track it any time</strong> in My requests, using the same email address.
+          <strong>Check on it any time</strong> under My requests.
         </li>
       </ol>
 

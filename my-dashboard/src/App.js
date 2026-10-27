@@ -1,35 +1,22 @@
 import { lazy, Suspense, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, getAvailability, getSupplies, submitRequest } from './api';
 import { iconFor, ProductIconSprite, typeLabelFor } from './catalogIcons';
-import CategoryPage from './components/CategoryPage';
-import CategoryMenu from './components/CategoryMenu';
-import CheckoutForm from './components/CheckoutForm';
+import Browse from './components/Browse';
 import DataSource, { showDataSource } from './components/DataSource';
-import Confirmation from './components/Confirmation';
 import Dialog from './components/Dialog';
 import Header from './components/Header';
 import ItemDetail from './components/ItemDetail';
-import Landing from './components/Landing';
-import MyRequests from './components/MyRequests';
-import Progress from './components/Progress';
 import RequestSlip from './components/RequestSlip';
-import { ForgotPassword, SignIn, Welcome } from './components/SignIn';
-import SearchResults from './components/SearchResults';
 import { EmptyState, ErrorState, SkeletonTable, WakingNotice } from './components/States';
 import { closeTo, navigate, useDebounced, useHashRoute } from './hooks';
-import {
-  allocateFefo, applyAvailability, applyBaseFilters, buildCatalog, formatDateTime, groupByType, groupProducts,
-  matchingTypes, normalizeInventory, rankByRelevance,
-  searchForms,
-} from './inventory';
+import { allocateFefo, applyAvailability, formatDateTime, groupProducts, normalizeInventory, searchForms } from './inventory';
 import { clearInventoryCache, readInventoryCache, writeInventoryCache } from './inventoryCache';
 import useCart, { MAX_LINES } from './useCart';
-import useAccount from './useAccount';
+import useAccount, { knownOrg } from './useAccount';
 import useTeam from './useTeam';
 import useOrg from './useOrg';
 import './styles.css';
 
-const DEFAULT_FILTERS = { inStockOnly: false, hideExpiring: false };
 const SITE_NAME = 'Blueprints Supply Requests';
 const CONTACT_EMAIL = /^[^@\s<>"]+@[^@\s<>"]+\.[^@\s<>"]+$/.test(process.env.REACT_APP_CONTACT_EMAIL || '')
   ? process.env.REACT_APP_CONTACT_EMAIL
@@ -43,13 +30,16 @@ function newClientId() {
 
 const TITLES = {
   requests: 'My requests', checkout: 'Review your request', sent: 'Request submitted',
-  signin: 'Sign in', forgot: 'Reset your password', welcome: 'Set up your account', guide: 'How to request supplies',
+  signin: 'Sign in', catalog: 'Request supplies',
   team: 'Team dashboard', 'team-signin': 'Blueprints team sign in',
 };
-const AUTH_VIEWS = ['signin', 'forgot', 'welcome', 'team-signin'];
-// The home page and the guide load only when opened.
+const AUTH_VIEWS = ['signin', 'team-signin'];
+// Only the supplies page ships in the main bundle; every other page loads when it's opened.
 const Home = lazy(() => import('./components/Home'));
-const Guide = lazy(() => import('./components/Guide'));
+const SignIn = lazy(() => import('./components/SignIn').then((m) => ({ default: m.SignIn })));
+const CheckoutForm = lazy(() => import('./components/CheckoutForm'));
+const Confirmation = lazy(() => import('./components/Confirmation'));
+const MyRequests = lazy(() => import('./components/MyRequests'));
 // The Blueprints team pages are for members only, so clinics never download them.
 const TeamSignIn = lazy(() => import('./components/TeamSignIn'));
 const TeamDashboard = lazy(() => import('./components/TeamDashboard'));
@@ -150,53 +140,22 @@ export default function App() {
     if (hashRoute.view === 'team' && !teamAuth.member) navigate('/team/signin', { replace: true });
     if (hashRoute.view === 'team-signin' && teamAuth.member) navigate('/team', { replace: true });
   }, [hashRoute.view, teamAuth.member]);
-  // #/how-it-works is the guide's old address.
-  useEffect(() => {
-    if (hashRoute.legacy) navigate('/guide', { replace: true });
-  }, [hashRoute.legacy]);
 
   const [rawQuery, setRawQuery] = useState('');
   // Typing stays instant; results follow at lower priority.
   const query = useDeferredValue(useDebounced(rawQuery.trim(), 100));
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [slipNotice, setSlipNotice] = useState(null);
   const [toast, setToast] = useState(null);
   const [lastSent, setLastSent] = useState(null);
   const attemptRef = useRef(null);
 
-  const setFilter = useCallback((key, value) => setFilters((f) => ({ ...f, [key]: value })), []);
-  const clearFilters = () => setFilters(DEFAULT_FILTERS);
-
   // Overlays (item details, request drawer) sit on top of the last page.
   const baseRef = useRef(OVERLAYS.includes(route.view) ? { view: 'catalog' } : route);
   if (!OVERLAYS.includes(route.view)) baseRef.current = route;
   const base = baseRef.current;
-  const inCatalog = base.view === 'catalog' || base.view === 'category';
-
-  // Typing a search from another page brings you to the results; following a
-  // link to another page ends the search.
-  const inCatalogRef = useRef(inCatalog);
-  inCatalogRef.current = inCatalog;
-  const keepQuery = useRef(false);
-  const onQuery = useCallback((value) => {
-    setRawQuery(value);
-    if (value.trim() && !inCatalogRef.current) {
-      keepQuery.current = true;
-      navigate('/supplies');
-    }
-  }, []);
-  // Enter or the search button: show the results, from any page.
-  const onSearch = useCallback(() => {
-    if (!inCatalogRef.current) {
-      keepQuery.current = true;
-      navigate('/supplies');
-    }
-  }, []);
   const basePath = routePath(base);
-  useEffect(() => {
-    if (keepQuery.current) keepQuery.current = false;
-    else setRawQuery('');
-  }, [basePath]);
+  // Leaving the supplies page ends the search (the other filters live on that page and reset too).
+  useEffect(() => setRawQuery(''), [basePath]);
 
   const items = inventory.items;
   // One row per product (name + maker); its lots (sheet rows) are inside.
@@ -207,24 +166,6 @@ export default function App() {
     for (const p of products) for (const lot of p.lots) map.set(lot.id, p);
     return map;
   }, [products]);
-  const catalog = useMemo(() => buildCatalog(products), [products]);
-  const catalogTotal = useMemo(() => catalog.reduce((n, c) => n + c.count, 0), [catalog]);
-  const effective = useMemo(() => ({ ...filters, holds }), [filters, holds]);
-
-  const category = base.view === 'category' ? catalog.find((c) => c.slug === base.slug) : null;
-  const categoryView = useMemo(() => {
-    if (!category) return null;
-    const visible = applyBaseFilters(category.types.flatMap((t) => t.items), effective);
-    return { groups: groupByType(visible), count: visible.length };
-  }, [category, effective]);
-
-  const searchView = useMemo(() => {
-    if (!query) return null;
-    const visible = applyBaseFilters(products, { ...effective, query });
-    const { own, other } = rankByRelevance(visible, query);
-    const groups = [...groupByType(own), ...groupByType(other).map((g) => ({ ...g, alsoMatched: true }))];
-    return { types: matchingTypes(catalog, query), groups, count: visible.length };
-  }, [query, products, catalog, effective]);
 
   // Once fresh inventory arrives, re-check what's saved on the request.
   const { reconcile } = cart;
@@ -279,16 +220,15 @@ export default function App() {
   }, [offerUndo, remove]);
 
   // New pages start at the top; overlays leave the page where it was.
-  const baseKey = `${base.view}/${base.slug || ''}/${base.id || ''}/${query ? 'q' : ''}/${base.home ? 'home' : ''}`;
+  const baseKey = `${base.view}/${base.home ? 'home' : ''}`;
   useLayoutEffect(() => {
-    if (!base.type) window.scrollTo(0, 0);
-  }, [baseKey, base.type]);
+    window.scrollTo(0, 0);
+  }, [baseKey]);
 
   useEffect(() => {
-    const title = query && inCatalog ? `Results for ${query}`
-      : TITLES[base.view] || (category ? category.name : '');
+    const title = TITLES[base.view] || '';
     document.title = title ? `${title} | ${SITE_NAME}` : SITE_NAME;
-  }, [base.view, category, query, inCatalog]);
+  }, [base.view]);
 
   const handleSubmit = async (orgValues, onSlow) => {
     setOrg(orgValues);
@@ -329,12 +269,12 @@ export default function App() {
     cart.clear();
     setSlipNotice(null);
     reloadHolds();
-    navigate(`/sent/${encodeURIComponent(res.request_id)}`, { replace: true });
+    navigate('/sent', { replace: true });
   };
 
-  const onSignedIn = (next) => (acc, { welcome, reset } = {}) => {
+  const onSignedIn = (next) => (acc, { welcome } = {}) => {
     signedIn(acc);
-    const lead = welcome ? 'You’re all set. ' : reset ? 'Password changed. ' : '';
+    const lead = welcome ? 'You’re all set. ' : '';
     setToast({ message: `${lead}Signed in as ${acc.org}.` });
     if (next !== undefined) navigate(next === 'review' ? '/review' : next === 'requests' ? '/requests' : '/supplies', { replace: true });
   };
@@ -353,11 +293,11 @@ export default function App() {
       <EmptyState level={1} title={`You’re signed in as ${account.org}`} action={<a className="btn btn--primary" href="#/supplies">Browse supplies</a>}>
         Signed in with {account.email}.
       </EmptyState>
-    ) : <SignIn next={base.next} onSignedIn={onSignedIn(base.next)} contactEmail={CONTACT_EMAIL} />;
+    ) : <SignIn next={base.next} onSignedIn={onSignedIn(base.next)} contactEmail={CONTACT_EMAIL} knownOrg={knownOrg} />;
   } else if (base.view === 'landing') {
     main = (
       <Suspense fallback={<p className="hint" role="status">Loading…</p>}>
-        <Home clinic={account ? account.org : null} products={products} fresh={inventory.fresh || inventory.status === 'error'} />
+        <Home clinic={account ? account.org : null} />
       </Suspense>
     );
   } else if (base.view === 'team-signin' || base.view === 'team') {
@@ -368,20 +308,10 @@ export default function App() {
           : <TeamSignIn onSignedIn={(m) => { teamAuth.signedIn(m); navigate('/team', { replace: true }); }} />}
       </Suspense>
     );
-  } else if (base.view === 'guide') {
-    main = (
-      <Suspense fallback={<p className="hint" role="status">Loading the guide…</p>}>
-        <Guide contactEmail={CONTACT_EMAIL} />
-      </Suspense>
-    );
-  } else if (base.view === 'forgot') {
-    main = <ForgotPassword contactEmail={CONTACT_EMAIL} onSignedIn={onSignedIn(null)} />;
-  } else if (base.view === 'welcome') {
-    main = <Welcome key={base.token} token={base.token} onSignedIn={onSignedIn(null)} contactEmail={CONTACT_EMAIL} />;
   } else if (authOn && base.view === 'requests' && !account) {
-    main = <SignIn next="requests" onSignedIn={onSignedIn()} contactEmail={CONTACT_EMAIL} />;
+    main = <SignIn next="requests" onSignedIn={onSignedIn()} contactEmail={CONTACT_EMAIL} knownOrg={knownOrg} />;
   } else if (authOn && base.view === 'checkout' && !account && cart.lines.length) {
-    main = <SignIn next="review" lineCount={cart.lines.length} onSignedIn={onSignedIn()} contactEmail={CONTACT_EMAIL} />;
+    main = <SignIn next="review" lineCount={cart.lines.length} onSignedIn={onSignedIn()} contactEmail={CONTACT_EMAIL} knownOrg={knownOrg} />;
   } else if (base.view === 'requests') {
     main = (
       <MyRequests
@@ -407,8 +337,7 @@ export default function App() {
   } else if (base.view === 'sent') {
     main = (
       <Confirmation
-        requestId={base.id}
-        sent={lastSent && lastSent.id === base.id ? lastSent : null}
+        sent={lastSent}
         onBrowse={() => navigate('/supplies')}
         onViewRequests={() => navigate('/requests')}
       />
@@ -425,45 +354,14 @@ export default function App() {
           <SkeletonTable />
         </>
       );
-    } else if (searchView) {
-      page = (
-        <SearchResults
-          query={query}
-          {...searchView}
-          filters={filters}
-          setFilter={setFilter}
-          onClearSearch={() => setRawQuery('')}
-          tableProps={tableProps}
-        />
-      );
-    } else if (base.view === 'category' && category) {
-      page = (
-        <CategoryPage
-          category={category}
-          {...categoryView}
-          filters={filters}
-          setFilter={setFilter}
-          onClearFilters={clearFilters}
-          typeSlug={base.type}
-          tableProps={tableProps}
-        />
-      );
-    } else if (base.view === 'category') {
-      page = (
-        <EmptyState
-          level={1}
-          title="This category isn’t in the list anymore"
-          action={<a className="btn btn--secondary" href="#/supplies">See all categories</a>}
-        />
-      );
-    } else if (catalogTotal === 0) {
+    } else if (products.length === 0) {
       page = (
         <EmptyState title="No supplies are listed right now">
           The Blueprints team updates the list as donations arrive. Check back soon.
         </EmptyState>
       );
     } else {
-      page = <Landing catalog={catalog} />;
+      page = <Browse products={products} search={rawQuery} query={query} onSearch={setRawQuery} tableProps={tableProps} />;
     }
 
     main = (
@@ -482,23 +380,6 @@ export default function App() {
           )}
           {inventory.status === 'done' && !inventory.fresh && !inventory.error && slow && (
             <p className="stale" role="status">Showing the list saved on this device while the server wakes up.</p>
-          )}
-          {/* Supplies home only, for visitors: the guide link comes first, even while the list loads. */}
-          {base.view === 'catalog' && !account && !searchView && (
-            <a className="landing__guide" href="#/guide">
-              <strong>First time here?</strong> Read how to request supplies, step by step
-              <span aria-hidden="true"> →</span>
-            </a>
-          )}
-          {/* One step bar on screen: the list drawer shows its own (step 2). */}
-          {inventory.status === 'done' && route.view !== 'slip' && <Progress step={1} />}
-          {inventory.status === 'done' && catalogTotal > 0 && (
-            <CategoryMenu
-              catalog={catalog}
-              activeSlug={category && !query ? category.slug : null}
-              total={catalogTotal}
-              onNavigate={() => setRawQuery('')}
-            />
           )}
           {page}
         </div>
@@ -521,17 +402,13 @@ export default function App() {
         lineCount={cart.lines.length}
         units={cart.totalUnits}
         onOpenSlip={() => navigate('/slip')}
-        onHome={() => setRawQuery('')}
         account={account}
         onSignOut={onSignOut}
         authPage={AUTH_VIEWS.includes(base.view)}
         showSignIn={authOn}
-        query={rawQuery}
-        onQuery={onQuery}
-        onSearch={onSearch}
       />
       <main id="main" tabIndex={-1} className="main">
-        {main}
+        <Suspense fallback={<p className="hint" role="status">Loading…</p>}>{main}</Suspense>
       </main>
       <footer className="footer">
         <p className="footer__help">
@@ -594,15 +471,11 @@ export default function App() {
 
 function routePath(r) {
   if (r.home) return '/';
-  if (r.view === 'category') return `/c/${r.slug}${r.type ? `/${r.type}` : ''}`;
   if (r.view === 'requests') return '/requests';
   if (r.view === 'signin') return `/signin${r.next ? `/${r.next}` : ''}`;
-  if (r.view === 'forgot') return '/forgot';
-  if (r.view === 'guide') return '/guide';
   if (r.view === 'team') return '/team';
   if (r.view === 'team-signin') return '/team/signin';
-  if (r.view === 'welcome') return `/welcome/${r.token}`;
   if (r.view === 'checkout') return '/review';
-  if (r.view === 'sent') return `/sent/${r.id}`;
+  if (r.view === 'sent') return '/sent';
   return '/supplies';
 }
